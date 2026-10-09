@@ -1,7 +1,7 @@
-def chunk_file(file_data: dict, chunk_size: int = 500, overlap: int = 50) -> list[dict]:
+def chunk_file(file_data: dict, chunk_size: int = 1200, overlap: int = 150) -> list[dict]:
     """
     Split a single file's content into overlapping chunks.
-    Each chunk keeps the file path so we know where it came from.
+    Tracks path, character offset, and start/end line numbers.
     """
     content = file_data["content"]
     path    = file_data["path"]
@@ -13,10 +13,16 @@ def chunk_file(file_data: dict, chunk_size: int = 500, overlap: int = 50) -> lis
         end   = start + chunk_size
         chunk = content[start:end]
 
+        # Calculate exact 1-indexed line numbers
+        start_line = content[:start].count("\n") + 1
+        end_line   = start_line + chunk.count("\n")
+
         chunks.append({
-            "path":    path,
-            "content": chunk,
-            "start":   start,   
+            "path":       path,
+            "content":    chunk,
+            "start":      start,
+            "start_line": start_line,
+            "end_line":   end_line,
         })
 
         start += chunk_size - overlap  
@@ -24,14 +30,11 @@ def chunk_file(file_data: dict, chunk_size: int = 500, overlap: int = 50) -> lis
     return chunks
 
 
-def chunk_all_files(files_data: list[dict], chunk_size: int = 500, overlap: int = 50) -> list[dict]:
-    """Run chunk_file() on every file. Returns one flat list of all chunks."""
-    
+def chunk_all_files(files_data: list[dict], chunk_size: int = 1200, overlap: int = 150) -> list[dict]:
+    """Run chunk_file() on every file. Returns flat list of all chunks."""
     all_chunks = []
-    
     for file_data in files_data:
-        file_chunks = chunk_file(file_data, chunk_size, overlap)
-        all_chunks.extend(file_chunks)
+        all_chunks.extend(chunk_file(file_data, chunk_size, overlap))
     
     print(f"Total chunks created: {len(all_chunks)}")
     return all_chunks

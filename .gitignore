@@ -1,0 +1,34 @@
+# Environment variables & secrets
+.env
+*.env
+
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Cloned repositories & temporary folders
+backend/repo/
+backend/temp_repos/
+temp_repos/
+repo/
+
+# Generated Vector Indexes & Chunk Cache
+backend/storage/
+storage/
+*.index
+*.pkl
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

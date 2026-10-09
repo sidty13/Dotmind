@@ -32,7 +32,11 @@ def load_files(repo_path: str) -> list[dict]:
     
     files_data = []
     
-    SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+    SKIP_DIRS = {
+        ".git", "node_modules", "__pycache__", ".venv", "venv", 
+        "dist", "build", "tests", "docs", ".github", ".devcontainer"
+    }
+    SKIP_FILES = {"CHANGES.md", "CHANGELOG.md"}
     
     for root, dirs, files in os.walk(repo_path):
         
@@ -40,8 +44,10 @@ def load_files(repo_path: str) -> list[dict]:
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         
         for file in files:
+            if file in SKIP_FILES:
+                continue
+
             ext = os.path.splitext(file)[1].lower()
-            
             if ext not in SUPPORTED_EXTENSIONS:
                 continue
             
