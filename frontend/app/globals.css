@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Doto:wght@700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #000000;
+  --color-panel: #0A0A0A;
+  --color-raised: #111111;
+  --color-border: #222222;
+  --color-text: #EDEDED;
+  --color-dim: #8A8A8A;
+  --signal-red: #D71921;
+  --ready-green: #3DDC84;
+
+  --font-doto: 'Doto', 'Courier New', monospace;
+  --font-jetbrains: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-inter: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.light {
+  --color-bg: #F5F5F5;
+  --color-panel: #EAEAEA;
+  --color-raised: #FFFFFF;
+  --color-border: #D0D0D0;
+  --color-text: #111111;
+  --color-dim: #666666;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-inter);
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dotted grid background (radial-gradient 1px dots every 24px, 6% opacity) */
+.dotted-grid {
+  background-image: radial-gradient(circle, rgba(237, 237, 237, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.light .dotted-grid {
+  background-image: radial-gradient(circle, rgba(17, 17, 17, 0.08) 1px, transparent 1px);
+}
+
+/* Custom focus ring: 2px solid signal red */
+*:focus-visible {
+  outline: 2px solid var(--signal-red) !important;
+  outline-offset: 2px;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-panel);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dim);
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
