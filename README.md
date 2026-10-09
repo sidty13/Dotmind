@@ -128,6 +128,3 @@ Interactive Swagger documentation is available at **http://localhost:8001/docs**
 
 ---
 
-## License
-
-MIT
