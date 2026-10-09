@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from rag_pipeline import load_or_build_index, ask
 
 # 1. Build index for a repo (e.g., pallets/click)

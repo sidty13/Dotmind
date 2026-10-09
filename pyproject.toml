@@ -1,17 +1,24 @@
 [project]
-name = "github-rag-assistant"
+name = "dotmind"
 version = "0.1.0"
-description = "Add your description here"
+description = "dotmind - Codebase intelligence, multi-repo RAG, and AI conversational assistant"
 readme = "README.md"
+
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.95.0",
+    "bcrypt>=5.0.0",
+    "cryptography>=50.0.2",
     "faiss-cpu>=1.13.2",
     "fastapi>=0.135.3",
     "gitpython>=3.1.46",
+    "google-auth>=2.61.0",
     "groq>=1.1.2",
+    "httpx>=0.28.1",
     "openai>=3.26.0",
+    "pyjwt[crypto]>=2.15.1",
     "python-dotenv>=1.2.2",
     "sentence-transformers>=5.4.1",
+    "sqlmodel>=0.0.48",
     "uvicorn>=0.44.0",
 ]

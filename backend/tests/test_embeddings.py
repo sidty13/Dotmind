@@ -1,6 +1,11 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from repo_loader import clone_repo, load_files
 from chunker import chunk_all_files
 from embeddings import embed_chunks, build_faiss_index, save_index
+
 
 # Step 1: Load files (reuse from Step 2)
 repo_path = "repo"   # already cloned — no need to re-clone

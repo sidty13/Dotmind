@@ -2,7 +2,7 @@ import os
 import shutil
 import json
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,12 +10,16 @@ from pydantic import BaseModel
 import ingest_manager
 from retrieval import retrieve
 from rag_pipeline import generate_answer, generate_answer_stream
+from database import create_db_and_tables
+import auth
+from models import User
 
 app = FastAPI(
-    title="GitHub RAG & Chat Assistant API",
-    description="Multi-Repository RAG & Streaming Assistant powered by OpenAI & FAISS",
-    version="2.1.0"
+    title="dotmind - GitHub RAG & Assistant API",
+    description="Multi-Repository RAG & Streaming Assistant powered by OpenAI, FAISS, and Clerk Auth",
+    version="1.0.0"
 )
+
 
 # CORS
 app.add_middleware(
@@ -25,6 +29,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize database tables on startup
+create_db_and_tables()
+
+# Register Clerk Authentication routes (/auth/config, /auth/me)
+app.include_router(auth.router)
 
 # Active in-memory repository state
 state = {
