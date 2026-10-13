@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
+import { useRepo } from '@/context/repo-context';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
@@ -12,17 +14,20 @@ import {
   Terminal,
   CheckCircle2,
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
   FolderTree,
   RotateCw,
 } from 'lucide-react';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
 
 const DEFAULT_SKIPPED_DIRS = ['.git', 'node_modules', '__pycache__', '.venv', 'tests', 'docs', '.github'];
 const DEFAULT_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.cpp', '.c', '.h', '.java', '.go', '.md', '.json', '.yaml'];
 
 export default function IngestPage() {
-  const [repoUrl, setRepoUrl] = useState('https://github.com/tiangolo/fastapi');
+  const { getToken, isSignedIn } = useAuth();
+  const { refreshRepos, switchRepo } = useRepo();
+
+  const [repoUrl, setRepoUrl] = useState('');
   const [branch, setBranch] = useState('');
   const [skippedDirs, setSkippedDirs] = useState<string[]>(DEFAULT_SKIPPED_DIRS);
   const [extensions, setExtensions] = useState<string[]>(DEFAULT_EXTENSIONS);
@@ -31,10 +36,11 @@ export default function IngestPage() {
   const [isIngesting, setIsIngesting] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [currentStage, setCurrentStage] = useState<'CLONE' | 'CHUNK' | 'EMBED' | 'INDEX' | 'READY'>('CLONE');
   const [embedPercent, setEmbedPercent] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
-  const [showSkippedDetails, setShowSkippedDetails] = useState(false);
+  const [ingestResult, setIngestResult] = useState<any>(null);
 
   // Toggle helpers
   const toggleDir = (dir: string) => {
@@ -49,60 +55,118 @@ export default function IngestPage() {
     );
   };
 
-  // Mock Progress Runner
-  const handleStartIngest = (e?: React.FormEvent) => {
+  // Real Backend Ingestion Runner
+  const handleStartIngest = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!repoUrl) return;
+    if (!repoUrl.trim()) return;
 
     setIsIngesting(true);
     setIsDone(false);
     setHasError(false);
-    setEmbedPercent(0);
-    setLogs([`[0.0s] Initializing worker workspace for ${repoUrl}...`]);
+    setErrorMessage('');
+    setEmbedPercent(5);
+    setLogs([`[0.0s] Connecting to DotMind backend worker at ${API_BASE_URL}...`]);
     setCurrentStage('CLONE');
 
-    // Simulate progress
-    setTimeout(() => {
-      setCurrentStage('CLONE');
-      setLogs((l) => [...l, `[1.2s] Cloning branch: ${branch || 'default'} (280 code files detected)`]);
-    }, 1000);
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (isSignedIn) {
+        const token = await getToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
 
-    setTimeout(() => {
-      setCurrentStage('CHUNK');
-      setLogs((l) => [...l, `[2.5s] Running 1200-char sliding window chunker... 1,420 chunks created`]);
-    }, 2400);
+      const res = await fetch(`${API_BASE_URL}/ingest`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          url: repoUrl.trim(),
+          branch: branch.trim() || undefined,
+          force_rebuild: false,
+        }),
+      });
 
-    setTimeout(() => {
-      setCurrentStage('EMBED');
-      setLogs((l) => [...l, `[3.6s] Dispatching batches to OpenAI text-embedding-3-small (1536-D)...`]);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Ingest request failed (HTTP ${res.status})`);
+      }
 
-      let p = 0;
-      const interval = setInterval(() => {
-        p += 15;
-        if (p >= 100) {
-          p = 100;
-          clearInterval(interval);
-          setCurrentStage('INDEX');
-          setLogs((l) => [
-            ...l,
-            `[5.1s] Building FAISS IndexFlatIP cosine similarity matrix...`,
-            `[5.8s] Persisting vectors.index & chunks.pkl to storage/tiangolo_fastapi/`,
-          ]);
+      const data = await res.json();
+      const jobId = data.job_id;
+      setLogs((l) => [...l, `[0.5s] Job accepted (${jobId}). Polling pipeline progress...`]);
 
-          setTimeout(() => {
+      // Poll progress every 1000ms
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`${API_BASE_URL}/ingest/status/${jobId}`);
+          if (!statusRes.ok) return;
+
+          const job = await statusRes.json();
+
+          // Stage mapping
+          if (job.stage === 'cloning') {
+            setCurrentStage('CLONE');
+          } else if (job.stage === 'parsing') {
+            setCurrentStage('CHUNK');
+          } else if (job.stage === 'embedding') {
+            setCurrentStage('EMBED');
+          } else if (job.stage === 'saving') {
+            setCurrentStage('INDEX');
+          }
+
+          if (job.progress !== undefined) {
+            setEmbedPercent(job.progress);
+          }
+
+          if (job.message) {
+            setLogs((prev) => {
+              const lastLog = prev[prev.length - 1];
+              if (!lastLog?.includes(job.message)) {
+                return [...prev, `[${job.stage?.toUpperCase() || 'INFO'}] ${job.message}`];
+              }
+              return prev;
+            });
+          }
+
+          if (job.status === 'completed') {
+            clearInterval(interval);
             setCurrentStage('READY');
+            setEmbedPercent(100);
             setIsDone(true);
             setIsIngesting(false);
-            setLogs((l) => [...l, `[6.4s] Ingestion completed successfully! Workspace is ready.`]);
-          }, 1200);
+            setIngestResult(job.result);
+            setLogs((l) => [...l, `[READY] Ingestion completed successfully! Repository is active.`]);
+
+            // Refresh user's repos and switch to the newly ingested one
+            await refreshRepos();
+            if (job.result?.repo_id) {
+              await switchRepo(job.result.repo_id);
+            }
+          } else if (job.status === 'failed') {
+            clearInterval(interval);
+            setIsIngesting(false);
+            setHasError(true);
+            setErrorMessage(job.error || job.message || 'Ingestion failed on backend');
+            setLogs((l) => [...l, `[ERROR] ${job.error || job.message}`]);
+          }
+        } catch (pollErr: any) {
+          console.error('Error polling status:', pollErr);
         }
-        setEmbedPercent(p);
-        if (p === 60) {
-          setLogs((l) => [...l, `[4.2s] batch 7/12 · 1,400 chunks · chunk 842 → src/routing.py:120-168`]);
-        }
-      }, 350);
-    }, 3800);
+      }, 1000);
+    } catch (err: any) {
+      setIsIngesting(false);
+      setHasError(true);
+      setErrorMessage(err.message || 'Could not connect to backend.');
+      setLogs((l) => [...l, `[FATAL] ${err.message}`]);
+    }
   };
+
+  const steps = [
+    { name: 'CLONE', label: '1. CLONE' },
+    { name: 'CHUNK', label: '2. CHUNK' },
+    { name: 'EMBED', label: '3. EMBED' },
+    { name: 'INDEX', label: '4. INDEX' },
+    { name: 'READY', label: '5. READY' },
+  ];
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-12">
@@ -131,120 +195,106 @@ export default function IngestPage() {
                 value={repoUrl}
                 disabled={isIngesting}
                 onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="paste a github url"
+                placeholder="https://github.com/owner/repository"
                 className="w-full bg-transparent text-text placeholder:text-dim/60 focus:outline-none"
               />
               {!repoUrl && <span className="w-2 h-4 bg-signal-red animate-blink" />}
             </div>
 
             {/* Optional Branch Field */}
-            <div className="sm:w-44 flex items-center bg-raised border border-border focus-within:border-signal-red rounded-[6px] px-3 py-2 font-mono text-[13px]">
-              <GitBranch size={14} className="text-dim mr-2 shrink-0" />
+            <div className="sm:w-40 flex items-center bg-raised border border-border focus-within:border-signal-red rounded-[6px] px-3 py-2 transition-colors font-mono text-[13px]">
+              <GitBranch size={13} className="text-dim mr-2 shrink-0" />
               <input
                 type="text"
                 value={branch}
                 disabled={isIngesting}
                 onChange={(e) => setBranch(e.target.value)}
-                placeholder="branch (opt)"
-                className="w-full bg-transparent text-text placeholder:text-dim/60 focus:outline-none text-[13px]"
+                placeholder="main"
+                className="w-full bg-transparent text-text placeholder:text-dim/60 focus:outline-none"
               />
             </div>
 
+            {/* Submit Button */}
             <Button
               type="submit"
               variant="primary"
               size="md"
-              disabled={isIngesting || !repoUrl}
-              className="gap-2 shrink-0"
+              disabled={isIngesting || !repoUrl.trim()}
+              className="gap-2 whitespace-nowrap"
             >
               {isIngesting ? (
                 <>
-                  <RotateCw size={13} className="animate-spin" />
+                  <RotateCw size={14} className="animate-spin" />
                   <span>Processing...</span>
                 </>
               ) : (
                 <>
-                  <span>Index repo</span>
+                  <span>Start ingest</span>
                   <ArrowRight size={14} />
                 </>
               )}
             </Button>
           </div>
+
+          {/* Quick preset chips */}
+          <div className="flex items-center gap-2 flex-wrap font-mono text-xs text-dim pt-1">
+            <span>Examples:</span>
+            <button
+              type="button"
+              disabled={isIngesting}
+              onClick={() => setRepoUrl('https://github.com/octocat/Hello-World')}
+              className="hover:text-text underline transition-colors"
+            >
+              octocat/Hello-World
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              disabled={isIngesting}
+              onClick={() => setRepoUrl('https://github.com/pallets/click')}
+              className="hover:text-text underline transition-colors"
+            >
+              pallets/click
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              disabled={isIngesting}
+              onClick={() => setRepoUrl('https://github.com/encode/starlette')}
+              className="hover:text-text underline transition-colors"
+            >
+              encode/starlette
+            </button>
+          </div>
         </form>
       </Panel>
 
-      {/* Filter Panel */}
-      <Panel label="WORKSPACE FILTERS // EXCLUSIONS">
-        <div className="space-y-4 text-xs font-mono">
-          {/* Skip Dirs */}
-          <div>
-            <div className="text-dim uppercase tracking-label mb-2 flex items-center gap-1.5">
-              <span>SKIPPED DIRECTORIES (TOGGLE):</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {DEFAULT_SKIPPED_DIRS.map((dir) => (
-                <Chip
-                  key={dir}
-                  label={dir}
-                  active={skippedDirs.includes(dir)}
-                  onClick={() => toggleDir(dir)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Included File Extensions */}
-          <div className="pt-2 border-t border-border">
-            <div className="text-dim uppercase tracking-label mb-2">
-              SUPPORTED CODE EXTENSIONS:
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {DEFAULT_EXTENSIONS.map((ext) => (
-                <Chip
-                  key={ext}
-                  label={ext}
-                  active={extensions.includes(ext)}
-                  onClick={() => toggleExt(ext)}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      {/* Pipeline Progress Panel (When active or done) */}
-      {(isIngesting || isDone) && (
-        <Panel label="PIPELINE PROGRESS // TELEMETRY" raised={true}>
+      {/* Progress & Live Telemetry Panel */}
+      {(isIngesting || isDone || hasError) && (
+        <Panel label="PIPELINE EXECUTION" raised={true}>
           <div className="space-y-6">
-            {/* Horizontal Stepper */}
-            <div className="flex items-center justify-between font-mono text-[11px] sm:text-[12px] uppercase tracking-label">
-              {[
-                { id: 'CLONE', label: '1. CLONE' },
-                { id: 'CHUNK', label: '2. CHUNK' },
-                { id: 'EMBED', label: '3. EMBED' },
-                { id: 'INDEX', label: '4. INDEX' },
-                { id: 'READY', label: '5. READY' },
-              ].map((step, idx) => {
-                const isCurrent = currentStage === step.id;
-                const isPast =
-                  (step.id === 'CLONE' && currentStage !== 'CLONE') ||
-                  (step.id === 'CHUNK' && !['CLONE', 'CHUNK'].includes(currentStage)) ||
-                  (step.id === 'EMBED' && ['INDEX', 'READY'].includes(currentStage)) ||
-                  (step.id === 'INDEX' && currentStage === 'READY');
+            {/* Horizontal 5-Step Stepper */}
+            <div className="grid grid-cols-5 gap-2 font-mono text-[11px]">
+              {steps.map((step, idx) => {
+                const stepIdx = steps.findIndex((s) => s.name === currentStage);
+                const isCurrent = step.name === currentStage;
+                const isPast = idx < stepIdx || isDone;
 
                 return (
-                  <div key={idx} className="flex items-center gap-2">
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full transition-all ${
+                  <div key={step.name} className="flex flex-col items-center text-center">
+                    <div
+                      className={`w-6 h-6 rounded-full border flex items-center justify-center mb-1 text-[10px] font-bold transition-all ${
                         isCurrent
-                          ? 'bg-signal-red animate-pulse-red'
+                          ? 'border-signal-red bg-signal-red text-white shadow-[0_0_8px_rgba(215,25,33,0.6)]'
                           : isPast
-                          ? 'bg-text'
-                          : 'bg-border'
+                          ? 'border-ready-green bg-ready-green/20 text-ready-green'
+                          : 'border-border text-dim/60'
                       }`}
-                    />
+                    >
+                      {isPast ? '✓' : idx + 1}
+                    </div>
                     <span
-                      className={`${
+                      className={`uppercase tracking-label text-[10px] sm:text-[11px] ${
                         isCurrent
                           ? 'text-signal-red font-bold'
                           : isPast
@@ -264,10 +314,10 @@ export default function IngestPage() {
               <div className="flex items-center justify-between font-mono text-[12px] text-dim">
                 <span>
                   {currentStage === 'EMBED'
-                    ? `batch 7/12 · 1,400 chunks · text-embedding-3-small`
+                    ? `Generating OpenAI text-embedding-3-small vectors...`
                     : currentStage === 'READY'
-                    ? `All 1,420 chunks embedded successfully`
-                    : `Analyzing files & preparing vectors...`}
+                    ? `Repository indexed and active in vector memory`
+                    : `Analyzing source files & building vector indices...`}
                 </span>
                 <span className="text-text font-bold">{embedPercent}%</span>
               </div>
@@ -280,7 +330,7 @@ export default function IngestPage() {
             </div>
 
             {/* Live Terminal Log Tail */}
-            <div className="p-3 bg-bg border border-border rounded-[4px] font-mono text-[12px] text-text/80 h-32 overflow-y-auto space-y-1">
+            <div className="p-3 bg-bg border border-border rounded-[4px] font-mono text-[12px] text-text/80 h-36 overflow-y-auto space-y-1">
               {logs.map((log, lIdx) => (
                 <div key={lIdx} className="leading-relaxed">
                   <span className="text-signal-red font-bold mr-1.5">{'>'}</span>
@@ -294,47 +344,31 @@ export default function IngestPage() {
 
       {/* Result Summary Card when Done */}
       {isDone && (
-        <Panel label="SUMMARY // INGESTION COMPLETE" className="border-signal-red">
+        <Panel label="SUMMARY // INGESTION COMPLETE" className="border-ready-green">
           <div className="space-y-4 font-mono text-[13px]">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2 border-b border-border">
               <div>
-                <span className="text-dim text-[11px] block uppercase">FILES KEPT</span>
-                <span className="font-display text-2xl font-bold text-text">142</span>
+                <span className="text-dim text-[11px] block uppercase">FILES PARSED</span>
+                <span className="font-display text-2xl font-bold text-text">
+                  {ingestResult?.files_count || 'Done'}
+                </span>
               </div>
               <div>
-                <span className="text-dim text-[11px] block uppercase">FILES SKIPPED</span>
-                <span className="font-display text-2xl font-bold text-text">31</span>
+                <span className="text-dim text-[11px] block uppercase">BRANCH</span>
+                <span className="font-display text-2xl font-bold text-text">
+                  {ingestResult?.branch || branch || 'main'}
+                </span>
               </div>
               <div>
                 <span className="text-dim text-[11px] block uppercase">TOTAL CHUNKS</span>
-                <span className="font-display text-2xl font-bold text-signal-red">612</span>
+                <span className="font-display text-2xl font-bold text-signal-red">
+                  {ingestResult?.chunks_count || 'Indexed'}
+                </span>
               </div>
               <div>
-                <span className="text-dim text-[11px] block uppercase">DURATION</span>
-                <span className="font-display text-2xl font-bold text-ready-green">6.4s</span>
+                <span className="text-dim text-[11px] block uppercase">STATUS</span>
+                <span className="font-display text-2xl font-bold text-ready-green">READY</span>
               </div>
-            </div>
-
-            {/* Expandable Skipped Files List */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowSkippedDetails(!showSkippedDetails)}
-                className="flex items-center gap-1.5 text-dim hover:text-text text-[12px] uppercase tracking-label transition-colors"
-              >
-                <span>View 31 skipped files and reasons</span>
-                {showSkippedDetails ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-              </button>
-
-              {showSkippedDetails && (
-                <div className="mt-2 p-3 bg-raised border border-border rounded-[4px] text-[12px] space-y-1 max-h-36 overflow-y-auto text-dim">
-                  <div>· tests/test_routing.py (matched &apos;tests/&apos; filter)</div>
-                  <div>· docs/index.md (matched &apos;docs/&apos; filter)</div>
-                  <div>· .github/workflows/ci.yml (matched &apos;.github/&apos; filter)</div>
-                  <div>· CHANGES.md (matched changelog exclusion rules)</div>
-                  <div>· package-lock.json (unsupported binary/lock format)</div>
-                </div>
-              )}
             </div>
 
             {/* Actions */}
@@ -342,13 +376,13 @@ export default function IngestPage() {
               <Link href="/chat">
                 <Button variant="primary" size="md" className="gap-2">
                   <Terminal size={14} />
-                  <span>Start chatting</span>
+                  <span>Start chatting with this repo</span>
                 </Button>
               </Link>
               <Link href="/repos">
                 <Button variant="secondary" size="md" className="gap-2">
                   <FolderTree size={14} />
-                  <span>View repo card</span>
+                  <span>View in repositories</span>
                 </Button>
               </Link>
             </div>
@@ -356,35 +390,26 @@ export default function IngestPage() {
         </Panel>
       )}
 
-      {/* Error state simulation toggle button */}
-      <div className="text-center pt-4">
-        <button
-          onClick={() => setHasError(!hasError)}
-          className="text-[11px] font-mono text-dim/60 hover:text-dim underline"
-        >
-          {hasError ? 'Hide simulated error state' : 'Test simulated error state'}
-        </button>
-
-        {hasError && (
-          <div className="mt-3 p-4 bg-panel border border-signal-red rounded-[6px] text-left font-mono text-[13px] space-y-2">
-            <div className="flex items-center gap-2 text-signal-red font-bold">
-              <AlertCircle size={15} />
-              <span>Couldn&apos;t clone this repo. Is it private?</span>
-            </div>
-            <p className="text-dim text-[12px]">
-              Git returned exit code 128: Remote repository not found or authentication credentials required.
-            </p>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => handleStartIngest()}
-              className="mt-2 gap-1.5"
-            >
-              <span>Retry clone</span>
-            </Button>
+      {/* Error state */}
+      {hasError && (
+        <div className="p-4 bg-panel border border-signal-red rounded-[6px] text-left font-mono text-[13px] space-y-2">
+          <div className="flex items-center gap-2 text-signal-red font-bold">
+            <AlertCircle size={15} />
+            <span>Ingestion failed</span>
           </div>
-        )}
-      </div>
+          <p className="text-dim text-[12px]">
+            {errorMessage || 'Git returned an error. Check if the repository URL is valid and public.'}
+          </p>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => handleStartIngest()}
+            className="mt-2 gap-1.5"
+          >
+            <span>Retry ingestion</span>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

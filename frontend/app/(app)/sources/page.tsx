@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { MOCK_FILE_TREE, MOCK_FULL_CODE, MOCK_CITATIONS } from '@/lib/mock-data';
+import { useRepo } from '@/context/repo-context';
 import { Button } from '@/components/ui/button';
 import {
   FileCode,
@@ -12,9 +13,11 @@ import {
   Sparkles,
   ChevronRight,
   GitBranch,
+  FolderGit2,
 } from 'lucide-react';
 
 export default function SourcesPage() {
+  const { activeRepo } = useRepo();
   const [selectedFile, setSelectedFile] = useState('starlette/routing.py');
   const [copied, setCopied] = useState(false);
 
@@ -36,11 +39,13 @@ export default function SourcesPage() {
       {/* Top Header Bar */}
       <div className="h-12 border-b border-border bg-panel px-4 flex items-center justify-between text-xs select-none shrink-0">
         <div className="flex items-center gap-2 text-dim truncate">
-          <span className="text-text font-bold">encode/starlette</span>
+          <span className="text-text font-bold">
+            {activeRepo ? `${activeRepo.owner}/${activeRepo.name}` : 'No repo selected'}
+          </span>
           <ChevronRight size={12} className="text-dim/50" />
           <span className="flex items-center gap-1 text-dim">
             <GitBranch size={12} />
-            <span>master</span>
+            <span>{activeRepo?.branch || 'main'}</span>
           </span>
           <ChevronRight size={12} className="text-dim/50" />
           <span className="text-signal-red font-semibold">{selectedFile}</span>
@@ -55,16 +60,18 @@ export default function SourcesPage() {
             <span>{copied ? 'Copied Link' : 'Copy permalink'}</span>
           </Button>
 
-          <a
-            href={`https://github.com/encode/starlette/blob/master/${selectedFile}#L${citedRange.start}-L${citedRange.end}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button variant="primary" size="sm" className="gap-1.5">
-              <ExternalLink size={11} />
-              <span>Open on GitHub</span>
-            </Button>
-          </a>
+          {activeRepo?.url && (
+            <a
+              href={`${activeRepo.url}/blob/${activeRepo.branch || 'main'}/${selectedFile}#L${citedRange.start}-L${citedRange.end}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="primary" size="sm" className="gap-1.5">
+                <ExternalLink size={11} />
+                <span>Open on GitHub</span>
+              </Button>
+            </a>
+          )}
         </div>
       </div>
 

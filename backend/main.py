@@ -25,7 +25,13 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$|https://.*\.vercel\.app|https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -271,14 +277,25 @@ def start_ingest(
     }
 
 
+
+
 @app.get("/ingest/status/{job_id}")
 def get_ingest_status(job_id: str):
     job = ingest_manager.get_job(job_id)
+
     if not job:
         raise HTTPException(status_code=404, detail="Job ID not found.")
 
-    if job.get("status") == "completed" and state["repo_id"] is None:
-        load_active_repo(job.get("repo_id"))
+    # Activate the newly indexed repository, even if another repo is active.
+    if job.get("status") == "completed":
+        repo_id = job.get("repo_id")
+
+        if repo_id and repo_id != state["repo_id"]:
+            if not load_active_repo(repo_id):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Repository '{repo_id}' was indexed but could not be loaded."
+                )
 
     return job
 

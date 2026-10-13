@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MOCK_CHAT_MESSAGES, MOCK_CITATIONS, MOCK_FILE_TREE } from '@/lib/mock-data';
+import { useAuth } from '@clerk/nextjs';
 import { useRepo } from '@/context/repo-context';
 import { ChatMessage, Citation } from '@/lib/types';
 import { SourcesDrawer } from '@/components/chat/sources-drawer';
@@ -23,11 +23,15 @@ import {
   FolderGit2,
 } from 'lucide-react';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+
 export default function ChatPage() {
+  const { getToken, isSignedIn } = useAuth();
   const { activeRepo } = useRepo();
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_CHAT_MESSAGES);
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputPrompt, setInputPrompt] = useState('');
-  const [scope, setScope] = useState<'Whole repo' | 'starlette/routing.py' | 'starlette/middleware/'>('Whole repo');
+  const [scope, setScope] = useState<'Whole repo'>('Whole repo');
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [highlightedCitationId, setHighlightedCitationId] = useState<number | null>(null);
 
@@ -35,10 +39,10 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
-  const [citationsList, setCitationsList] = useState<Citation[]>(MOCK_CITATIONS);
+  const [citationsList, setCitationsList] = useState<Citation[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -61,10 +65,15 @@ export default function ChatPage() {
     }
   };
 
-  // Mock Streaming Assistant Response
-  const handleSendMessage = (textToSend?: string) => {
+  // Real Streaming Assistant Response via SSE
+  const handleSendMessage = async (textToSend?: string) => {
     const q = (textToSend || inputPrompt).trim();
     if (!q || isStreaming) return;
+
+    if (!activeRepo) {
+      alert('Please connect or select a repository from the top bar before chatting.');
+      return;
+    }
 
     setShowSlashMenu(false);
     setShowFileMenu(false);
@@ -80,59 +89,140 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInputPrompt('');
     setIsStreaming(true);
-    abortControllerRef.current = false;
 
-    // 2. Prepare Assistant Streaming Message
-    const streamTarget =
-      q.toLowerCase().includes('architecture')
-        ? `Starlette is structured around three modular core layers [1]:\n\n1. **ASGI Kernel**: Implements the raw asynchronous server gateway interface.\n2. **Routing & Dispatch**: Handles path matching, regular expression extraction, and route mount points [1][2].\n3. **Middleware Pipeline**: Wraps requests in exception, CORS, and authentication handlers [3].\n\n\`\`\`python\n# Architectural core\napp = Starlette(routes=routes, middleware=middleware)\n\`\`\``
-        : `Based on **${activeRepo?.name || 'repository'}** context, request handling begins in the router table [1].\n\nWhen a client submits an HTTP payload, the corresponding endpoint is resolved via \`Route.matches()\` [2]. If found, execution delegates to your custom handler function [3].`;
-
-    // Temporary streaming message with loader
+    // 2. Prepare Assistant Streaming Message placeholder
     const assistantMsgId = `a-${Date.now()}`;
     const initialAssistantMsg: ChatMessage = {
       id: assistantMsgId,
       role: 'assistant',
       content: '',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      citations: MOCK_CITATIONS,
+      citations: [],
       isStreaming: true,
     };
 
     setMessages((prev) => [...prev, initialAssistantMsg]);
 
-    // Stream tokens after short loader delay
-    setTimeout(() => {
-      let idx = 0;
-      const interval = setInterval(() => {
-        if (abortControllerRef.current) {
-          clearInterval(interval);
-          setIsStreaming(false);
-          return;
-        }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-        if (idx < streamTarget.length) {
-          idx += 3;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId ? { ...m, content: streamTarget.slice(0, idx) } : m
-            )
-          );
-        } else {
-          clearInterval(interval);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId ? { ...m, isStreaming: false } : m
-            )
-          );
-          setIsStreaming(false);
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (isSignedIn) {
+        const token = await getToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/chat/stream`, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          question: q,
+          repo_id: activeRepo.id,
+          history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `Server returned HTTP ${res.status}`);
+      }
+
+      if (!res.body) {
+        throw new Error('ReadableStream not supported by server response.');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantContent = '';
+      let currentCitations: Citation[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const rawData = line.slice(6).trim();
+          if (!rawData) continue;
+
+          try {
+            const data = JSON.parse(rawData);
+
+            if (data.type === 'sources' && Array.isArray(data.sources)) {
+              currentCitations = data.sources.map((s: any, idx: number) => ({
+                id: idx + 1,
+                filePath: s.path,
+                startLine: s.start_line,
+                endLine: s.end_line,
+                similarity: s.score,
+                preview: s.preview,
+                githubUrl: s.url,
+              }));
+              setCitationsList(currentCitations);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId ? { ...m, citations: currentCitations } : m
+                )
+              );
+            } else if (data.type === 'token') {
+              assistantContent += data.token;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId ? { ...m, content: assistantContent } : m
+                )
+              );
+            } else if (data.type === 'done') {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? { ...m, isStreaming: false, citations: currentCitations }
+                    : m
+                )
+              );
+              setIsStreaming(false);
+            }
+          } catch (jsonErr) {
+            // Ignore partial SSE chunk parses
+          }
         }
-      }, 25);
-    }, 600);
+      }
+
+      // Finish streaming cleanly
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId
+            ? { ...m, isStreaming: false, citations: currentCitations }
+            : m
+        )
+      );
+      setIsStreaming(false);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setIsStreaming(false);
+        return;
+      }
+
+      const errorMsg = `Unable to connect to DotMind backend: ${err.message || err}.\n\nEnsure your backend is running at ${API_BASE_URL} and your OPENAI_API_KEY is configured.`;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId
+            ? { ...m, content: errorMsg, isStreaming: false }
+            : m
+        )
+      );
+      setIsStreaming(false);
+    }
   };
 
   const handleStopGenerating = () => {
-    abortControllerRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setIsStreaming(false);
   };
 
@@ -155,48 +245,43 @@ export default function ChatPage() {
 
   // Render assistant message content with formatted citations & code
   const renderMessageContent = (content: string, isStreamingMsg?: boolean) => {
-    // Split by code blocks
     const parts = content.split(/(```[\s\S]*?```)/g);
 
     return parts.map((part, pIdx) => {
       if (part.startsWith('```') && part.endsWith('```')) {
-        const lines = part.slice(3, -3).trim().split('\n');
-        const lang = lines[0].startsWith('#') ? 'python' : lines[0] || 'python';
-        const code = lines.slice(1).join('\n') || lines.join('\n');
+        const lines = part.slice(3, -3).split('\n');
+        const language = lines[0].trim() || 'python';
+        const codeText = lines.slice(1).join('\n');
+
         return (
-          <CodeBlock
-            key={pIdx}
-            code={code}
-            language={lang}
-            filePath="starlette/routing.py"
-          />
+          <div key={pIdx} className="my-3">
+            <CodeBlock code={codeText} language={language} />
+          </div>
         );
       }
 
-      // Replace citation brackets [1], [2] with clickable pills
-      const textParts = part.split(/(\[\d+\])/g);
+      // Highlight citation pills [1], [2]
+      const textWithPills = part.split(/(\[\d+\])/g);
+
       return (
         <span key={pIdx}>
-          {textParts.map((t, tIdx) => {
-            const match = t.match(/\[(\d+)\]/);
+          {textWithPills.map((segment, sIdx) => {
+            const match = segment.match(/\[(\d+)\]/);
             if (match) {
-              const cId = parseInt(match[1]);
+              const citationId = parseInt(match[1], 10);
               return (
                 <button
-                  key={tIdx}
-                  onClick={() => handleCitationClick(cId)}
-                  className="inline-flex items-center px-1.5 py-0.2 mx-1 rounded-[2px] border border-border bg-raised hover:border-signal-red hover:text-signal-red font-mono text-[12px] font-bold text-signal-red transition-colors align-baseline"
-                  title={`View cited source [${cId}]`}
+                  key={sIdx}
+                  onClick={() => handleCitationClick(citationId)}
+                  className="inline-flex items-center justify-center px-1.5 py-0.2 mx-0.5 text-[11px] font-mono font-bold rounded-[3px] border border-border bg-raised text-signal-red hover:border-signal-red hover:bg-signal-red/10 transition-colors cursor-pointer select-none align-baseline"
+                  title={`View citation source [${citationId}]`}
                 >
-                  [{cId}]
+                  [{citationId}]
                 </button>
               );
             }
-            return <span key={tIdx}>{t}</span>;
+            return segment;
           })}
-          {isStreamingMsg && (
-            <span className="w-2 h-4 bg-signal-red inline-block animate-blink ml-1 align-middle" />
-          )}
         </span>
       );
     });
@@ -220,15 +305,7 @@ export default function ChatPage() {
             {/* Scope dropdown */}
             <div className="flex items-center gap-1.5 text-dim">
               <span>SCOPE:</span>
-              <select
-                value={scope}
-                onChange={(e) => setScope(e.target.value as any)}
-                className="bg-raised border border-border rounded-[3px] px-2 py-0.5 text-text focus:outline-none cursor-pointer"
-              >
-                <option value="Whole repo">Whole repository</option>
-                <option value="starlette/routing.py">File: starlette/routing.py</option>
-                <option value="starlette/middleware/">Folder: starlette/middleware/</option>
-              </select>
+              <span className="text-text font-semibold">Whole repository</span>
             </div>
           </div>
 
@@ -253,22 +330,26 @@ export default function ChatPage() {
             <div className="h-full flex flex-col items-center justify-center text-center p-8 text-dim space-y-4">
               <span className="font-display text-4xl font-bold text-text/80">DotMind</span>
               <p className="max-w-md text-sm font-ui text-dim">
-                Query {activeRepo ? `${activeRepo.owner}/${activeRepo.name}` : 'your codebase'} with exact line-level references.
+                {activeRepo
+                  ? `Query ${activeRepo.owner}/${activeRepo.name} with exact line-level references.`
+                  : 'Please connect or select a repository from the top bar to start chatting.'}
               </p>
-              <div className="flex items-center gap-2 flex-wrap justify-center pt-2">
-                <Chip
-                  label="Explain the architecture"
-                  onClick={() => handleSendMessage('Explain the architecture')}
-                />
-                <Chip
-                  label="Find the entry point"
-                  onClick={() => handleSendMessage('Find the entry point')}
-                />
-                <Chip
-                  label="Where is auth handled?"
-                  onClick={() => handleSendMessage('Where is auth handled?')}
-                />
-              </div>
+              {activeRepo && (
+                <div className="flex items-center gap-2 flex-wrap justify-center pt-2">
+                  <Chip
+                    label="Explain the architecture"
+                    onClick={() => handleSendMessage('Explain the architecture')}
+                  />
+                  <Chip
+                    label="Find the entry point"
+                    onClick={() => handleSendMessage('Find the entry point')}
+                  />
+                  <Chip
+                    label="How does routing work?"
+                    onClick={() => handleSendMessage('How does routing work?')}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             messages.map((msg) => {
@@ -299,45 +380,54 @@ export default function ChatPage() {
                       <span className="text-dim/50">{msg.timestamp}</span>
                     </div>
 
-                    {/* Content */}
-                    <div className="text-text/95 leading-relaxed break-words">
-                      {msg.isStreaming && !msg.content ? (
-                        <div className="flex items-center gap-2 py-1 text-dim text-xs">
-                          <DotLoader size="sm" />
-                          <span>Searching index & generating answer...</span>
-                        </div>
-                      ) : (
+                    <div className="text-text leading-relaxed whitespace-pre-wrap break-words">
+                      {msg.content ? (
                         renderMessageContent(msg.content, msg.isStreaming)
+                      ) : msg.isStreaming ? (
+                        <div className="py-1">
+                          <DotLoader />
+                        </div>
+                      ) : null}
+
+                      {/* Blinking Block Cursor while Streaming */}
+                      {msg.isStreaming && msg.content && (
+                        <span className="inline-block w-2 h-4 bg-signal-red animate-blink ml-1 align-middle" />
                       )}
                     </div>
 
-                    {/* Message Actions on Hover */}
-                    {!msg.isStreaming && (
-                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 pt-2 text-[11px] text-dim transition-opacity select-none">
+                    {/* Citations Pills Row */}
+                    {!isUser && msg.citations && msg.citations.length > 0 && !msg.isStreaming && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-2 select-none">
+                        <span className="text-[11px] font-mono text-dim uppercase">Sources:</span>
+                        {msg.citations.map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => handleCitationClick(c.id)}
+                            className="text-[11px] font-mono px-2 py-0.5 rounded-[3px] border border-border bg-panel text-dim hover:border-signal-red hover:text-text transition-colors"
+                          >
+                            [{c.id}] {c.filePath.split('/').pop()}#L{c.startLine}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Action Bar on hover */}
+                    {!isUser && !msg.isStreaming && msg.content && (
+                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 pt-2 transition-opacity select-none">
                         <button
                           onClick={() => navigator.clipboard.writeText(msg.content)}
-                          className="hover:text-text flex items-center gap-1"
+                          className="p-1 rounded-[3px] border border-border bg-raised text-dim hover:text-text"
+                          title="Copy message"
                         >
-                          <Copy size={11} />
-                          <span>Copy</span>
+                          <Copy size={12} />
                         </button>
-                        {!isUser && (
-                          <>
-                            <button
-                              onClick={() => handleSendMessage('Regenerate answer with more details')}
-                              className="hover:text-text flex items-center gap-1"
-                            >
-                              <RotateCw size={11} />
-                              <span>Regenerate</span>
-                            </button>
-                            <button className="hover:text-text">
-                              <ThumbsUp size={11} />
-                            </button>
-                            <button className="hover:text-text">
-                              <ThumbsDown size={11} />
-                            </button>
-                          </>
-                        )}
+                        <button
+                          onClick={() => handleSendMessage(messages[messages.length - 2]?.content)}
+                          className="p-1 rounded-[3px] border border-border bg-raised text-dim hover:text-text"
+                          title="Regenerate"
+                        >
+                          <RotateCw size={12} />
+                        </button>
                       </div>
                     )}
                   </div>
@@ -348,96 +438,79 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area (Bottom Terminal Prompt) */}
-        <div className="relative border-t border-border bg-panel p-3">
-          {/* Slash Command Autocomplete Menu */}
+        {/* Bottom Input Area */}
+        <div className="p-4 border-t border-border bg-panel select-none relative">
+          {/* Slash Command Menu */}
           {showSlashMenu && (
             <SlashMenu
               onSelect={(cmd) => {
                 if (cmd === '/clear') {
                   setMessages([]);
-                } else if (cmd === '/health') {
-                  handleSendMessage('/health check');
+                  setInputPrompt('');
+                  setShowSlashMenu(false);
                 } else {
                   setInputPrompt(`${cmd} `);
+                  setShowSlashMenu(false);
                 }
-                setShowSlashMenu(false);
               }}
               onClose={() => setShowSlashMenu(false)}
             />
           )}
 
-          {/* @ File mention Autocomplete Menu */}
-          {showFileMenu && (
-            <div className="absolute bottom-16 left-3 w-72 rounded-[6px] border border-border bg-raised shadow-2xl p-1 z-50 font-mono text-[12px] max-h-48 overflow-y-auto">
-              <div className="px-2 py-1 text-[10px] text-dim uppercase">MENTION FILE (@)</div>
-              {MOCK_FILE_TREE.filter((f) => !f.isDir).map((f) => (
-                <button
-                  key={f.path}
-                  onClick={() => {
-                    setInputPrompt((prev) => prev.slice(0, -1) + `@${f.path} `);
-                    setShowFileMenu(false);
-                  }}
-                  className="w-full flex items-center gap-2 p-1.5 hover:bg-panel text-left text-text truncate rounded-[3px]"
-                >
-                  <FileCode size={12} className="text-signal-red" />
-                  <span className="truncate">{f.path}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Prompt Form */}
-          <div className="flex items-start gap-2 bg-raised border border-border focus-within:border-signal-red rounded-[6px] p-2 transition-colors">
-            <span className="text-signal-red font-bold text-[15px] pt-1 select-none">{'>'}</span>
+          <div className="flex items-end gap-2 bg-raised border border-border focus-within:border-signal-red rounded-[6px] p-2 transition-colors">
+            <span className="text-signal-red font-bold font-mono pl-1 pb-1 select-none text-[15px]">
+              {'>'}
+            </span>
 
             <textarea
-              rows={2}
               value={inputPrompt}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything about the codebase (try / for commands, @ for files)..."
-              className="flex-1 bg-transparent text-text placeholder:text-dim/60 focus:outline-none resize-none font-mono text-[14px] leading-relaxed"
+              disabled={isStreaming || !activeRepo}
+              rows={1}
+              placeholder={
+                activeRepo
+                  ? `Ask ${activeRepo.owner}/${activeRepo.name} (type / for commands, @ for files)...`
+                  : 'Please connect or select a repository from the top bar...'
+              }
+              className="flex-1 bg-transparent text-text placeholder:text-dim/60 focus:outline-none resize-none font-mono text-[14px] max-h-32 leading-relaxed"
             />
 
-            {/* Send / Stop Buttons */}
             {isStreaming ? (
               <Button
-                variant="danger"
+                variant="secondary"
                 size="sm"
                 onClick={handleStopGenerating}
-                className="gap-1.5 self-end shrink-0"
+                className="gap-1.5 h-8 text-signal-red border-signal-red/50 hover:bg-signal-red/10"
               >
-                <Square size={12} />
-                <span>Stop</span>
+                <Square size={12} className="fill-signal-red" />
+                <span className="text-[11px]">Stop</span>
               </Button>
             ) : (
               <Button
                 variant="primary"
                 size="sm"
-                disabled={!inputPrompt.trim()}
                 onClick={() => handleSendMessage()}
-                className="gap-1.5 self-end shrink-0"
+                disabled={!inputPrompt.trim() || !activeRepo}
+                className="h-8 w-8 p-0 shrink-0"
               >
-                <Send size={12} />
-                <span>Send</span>
+                <Send size={13} />
               </Button>
             )}
           </div>
 
-          {/* Hint Row Beneath */}
-          <div className="flex items-center justify-between text-[11px] font-mono text-dim/70 pt-2 px-1 select-none">
-            <span>/ commands · @ files · ↑ history</span>
-            <span>⏎ send · Shift+⏎ newline</span>
+          <div className="flex items-center justify-between text-[11px] font-mono text-dim/60 pt-2 px-1">
+            <span>DotMind SSE Stream · GPT-4o-mini · Line Citations</span>
+            <span>↵ Send · ⇧↵ New line</span>
           </div>
         </div>
       </div>
 
-      {/* Right: Collapsible Sources Drawer (360px) */}
+      {/* Right: Sources Drawer (360px) */}
       <SourcesDrawer
-        citations={citationsList}
         isOpen={isDrawerOpen}
         onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
+        citations={citationsList}
         highlightedCitationId={highlightedCitationId}
       />
     </div>
