@@ -2,221 +2,269 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRepo } from '@/context/repo-context';
+import { useUser } from '@clerk/nextjs';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
-import { MOCK_ACTIVITY } from '@/lib/mock-data';
+import { StatusDot } from '@/components/ui/status-dot';
 import {
   Plus,
   Terminal,
   FolderGit2,
   ArrowUpRight,
-  Sparkles,
+  BookOpen,
+  FileCode,
   Layers,
-  Database,
-  Search,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function OverviewPage() {
-  const pipelineNodes = [
-    { label: 'Clone', stat: '142 files kept', active: false },
-    { label: 'Chunk', stat: '612 chunks', active: false },
-    { label: 'Embed', stat: '612 vectors', active: false },
-    { label: 'Index', stat: '2.4 MB size', active: false },
-    { label: 'Chat', stat: '18 answers today', active: true },
-  ];
+  const { repos, activeRepo, isLoading } = useRepo();
+  const { user } = useUser();
 
-  const statCards = [
-    {
-      title: 'Repos indexed',
-      value: '04',
-      unit: 'ACTIVE: 1',
-      sparkline: [2, 3, 3, 4, 4, 4, 4],
-      href: '/repos',
-    },
-    {
-      title: 'Total chunks',
-      value: '2.8K',
-      unit: '+479 TODAY',
-      sparkline: [1, 2, 2, 3, 4, 4, 5],
-      href: '/sources',
-    },
-    {
-      title: 'Avg retrieval score',
-      value: '0.84',
-      unit: 'COSINE SIMILARITY',
-      sparkline: [3, 4, 4, 4, 5, 4, 5],
-      href: '/settings',
-    },
-    {
-      title: 'Questions asked',
-      value: '142',
-      unit: 'AVG 18/DAY',
-      sparkline: [2, 3, 2, 4, 3, 5, 4],
-      href: '/chat',
-    },
-  ];
+  const totalChunks = repos.reduce((acc, r) => acc + (r.chunksCount || 0), 0);
+  const totalFiles = repos.reduce((acc, r) => acc + (r.filesCount || 0), 0);
 
   return (
-    <div className="space-y-8 animate-fadeIn">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-12 animate-fadeIn max-w-5xl mx-auto py-4 sm:py-8">
+      {/* 1. Spacious Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 pb-6 border-b border-border">
         <div>
-          <div className="text-[12px] font-mono uppercase tracking-label text-signal-red mb-1">
-            // TELEMETRY DASHBOARD
+          <div className="text-[12px] font-mono uppercase tracking-label text-signal-red mb-2">
+            // TELEMETRY WORKSPACE
           </div>
           <h1 className="font-display text-4xl sm:text-5xl font-black uppercase tracking-tight text-text">
-            Overview
+            {user?.firstName ? `Welcome, ${user.firstName}` : 'Overview'}
           </h1>
+          <p className="font-mono text-xs text-dim mt-2">
+            Multi-repository RAG assistant powered by OpenAI & FAISS vector search.
+          </p>
         </div>
 
-        {/* Quick Actions Row */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Primary Action Button */}
+        <div className="flex items-center gap-3">
           <Link href="/ingest">
-            <Button variant="primary" size="sm" className="gap-1.5">
-              <Plus size={13} />
-              <span>Ingest repo</span>
+            <Button variant="primary" size="md" className="gap-2">
+              <Plus size={14} />
+              <span>Ingest repository</span>
             </Button>
           </Link>
-          <Link href="/chat">
-            <Button variant="secondary" size="sm" className="gap-1.5">
-              <Terminal size={13} />
-              <span>Open chat</span>
-            </Button>
-          </Link>
-          <Link href="/repos">
-            <Button variant="secondary" size="sm" className="gap-1.5">
-              <FolderGit2 size={13} />
-              <span>Switch repo</span>
+          <Link href="/docs">
+            <Button variant="secondary" size="md" className="gap-2">
+              <BookOpen size={14} />
+              <span>Docs</span>
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Pipeline Map Hero Panel */}
-      <Panel label="PIPELINE STATUS // ACTIVE ENGINE" raised={true}>
-        <div className="relative py-4">
-          {/* Horizontal dotted connector */}
-          <div className="hidden md:block absolute top-[28px] left-[10%] right-[10%] h-[2px] border-t-2 border-dotted border-border/80 z-0" />
-
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-6 relative z-10">
-            {pipelineNodes.map((node, i) => (
-              <div key={i} className="flex flex-col items-center text-center group">
-                <div
-                  className={`w-12 h-12 rounded-full border flex items-center justify-center mb-3 transition-transform ${
-                    node.active
-                      ? 'border-signal-red bg-signal-red/20 text-signal-red shadow-[0_0_12px_rgba(215,25,33,0.5)] animate-pulse-red'
-                      : 'border-border bg-panel text-text group-hover:border-dim'
-                  }`}
-                >
-                  <span className="font-mono text-xs font-bold">{node.label}</span>
-                </div>
-                <span className="font-mono text-[13px] font-semibold text-text uppercase tracking-label">
-                  {node.label}
+      {/* 2. Active Repository Hero Banner (Airy & Spacious) */}
+      {activeRepo ? (
+        <Panel label="ACTIVE CODEBASE CONTEXT" raised={true} className="p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <StatusDot status={activeRepo.status} size="md" />
+                <span className="font-display text-2xl sm:text-3xl font-black text-text tracking-tight">
+                  {activeRepo.owner}/{activeRepo.name}
                 </span>
-                <span className="font-mono text-[11px] text-dim mt-0.5">
-                  {node.stat}
+                <span className="font-mono text-[11px] text-dim border border-border px-2 py-0.5 rounded-[2px]">
+                  {activeRepo.branch || 'main'}
                 </span>
               </div>
-            ))}
-          </div>
-        </div>
-      </Panel>
 
-      {/* Stat Cards (4 across) with Dotted Sparklines */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat, idx) => (
-          <Link key={idx} href={stat.href} className="group">
-            <Panel label={`STAT // 0${idx + 1}`} className="h-full group-hover:border-dim transition-colors">
-              <div className="flex flex-col justify-between h-full pt-1">
+              <p className="font-mono text-xs text-dim max-w-xl leading-relaxed">
+                Repository is ready for semantic question-answering. All chunks are vectorized and indexed in local cosine similarity memory.
+              </p>
+
+              <div className="flex items-center gap-6 pt-2 font-mono text-xs text-dim">
                 <div>
-                  <div className="flex items-center justify-between text-dim text-[12px] font-mono uppercase tracking-label mb-2">
-                    <span>{stat.title}</span>
-                    <ArrowUpRight size={13} className="text-dim/50 group-hover:text-signal-red transition-colors" />
-                  </div>
-                  <div className="font-display text-4xl sm:text-5xl font-black text-text mb-1 tracking-tight">
-                    {stat.value}
-                  </div>
+                  <span className="text-text font-bold">{activeRepo.chunksCount}</span> Chunks
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-border flex items-end justify-between">
-                  <span className="font-mono text-[11px] text-signal-red uppercase tracking-label">
-                    {stat.unit}
-                  </span>
-
-                  {/* 7-day dotted sparkline */}
-                  <div className="flex items-end gap-1 h-5 select-none" title="7-day activity">
-                    {stat.sparkline.map((val, dIdx) => (
-                      <div key={dIdx} className="flex flex-col gap-0.5 items-center">
-                        {[5, 4, 3, 2, 1].map((dotLevel) => (
-                          <span
-                            key={dotLevel}
-                            className={`w-1 h-1 rounded-full ${
-                              val >= dotLevel ? 'bg-signal-red' : 'bg-border/60'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                <div>
+                  <span className="text-text font-bold">{activeRepo.filesCount}</span> Files
+                </div>
+                <div>
+                  Status: <span className="text-ready-green font-bold">READY</span>
                 </div>
               </div>
-            </Panel>
-          </Link>
-        ))}
-      </div>
-
-      {/* Bottom Section: Recent Activity & Context Briefing */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Activity List in mono */}
-        <div className="lg:col-span-2">
-          <Panel label="SYSTEM LOG // RECENT ACTIVITY">
-            <div className="divide-y divide-border/60 font-mono text-[13px]">
-              {MOCK_ACTIVITY.map((act) => (
-                <div key={act.id} className="py-2.5 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 truncate">
-                    <span className="text-dim/60 text-[11px] shrink-0">{act.time}</span>
-                    <span className="text-signal-red font-bold">{'>'}</span>
-                    <span className="text-text/90 truncate">{act.text}</span>
-                  </div>
-                  <span className="text-[10px] uppercase tracking-label px-1.5 py-0.5 rounded-[2px] border border-border text-dim shrink-0">
-                    {act.type}
-                  </span>
-                </div>
-              ))}
             </div>
-          </Panel>
-        </div>
 
-        {/* Active Context Card */}
-        <div>
-          <Panel label="ACTIVE WORKSPACE">
-            <div className="space-y-4 font-mono text-[13px]">
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <span className="text-dim">REPOSITORY:</span>
-                <span className="text-text font-bold">encode/starlette</span>
-              </div>
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <span className="text-dim">BRANCH:</span>
-                <span className="text-text">master</span>
-              </div>
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <span className="text-dim">VECTOR INDEX:</span>
-                <span className="text-ready-green">FAISS FLAT_IP</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-dim">DIMENSION:</span>
-                <span className="text-text">1536-D</span>
-              </div>
-
-              <Link href="/chat" className="block pt-2">
+            <div className="flex flex-wrap lg:flex-col gap-3 shrink-0">
+              <Link href="/chat">
                 <Button variant="primary" size="md" className="w-full gap-2">
                   <Terminal size={14} />
-                  <span>Start query session</span>
+                  <span>Start Chat</span>
                 </Button>
               </Link>
+              <Link href="/sources">
+                <Button variant="secondary" size="md" className="w-full gap-2">
+                  <FileCode size={14} />
+                  <span>View Sources</span>
+                </Button>
+              </Link>
+              {activeRepo.url && (
+                <a
+                  href={activeRepo.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[12px] text-dim hover:text-text flex items-center justify-center gap-1.5 py-1 transition-colors"
+                >
+                  <ExternalLink size={13} />
+                  <span>Open on GitHub</span>
+                </a>
+              )}
             </div>
-          </Panel>
+          </div>
+        </Panel>
+      ) : (
+        /* Empty State Hero Banner */
+        <div className="border border-dashed border-border rounded-[8px] bg-panel/30 p-10 sm:p-12 text-center">
+          <div className="w-14 h-14 rounded-full border border-border flex items-center justify-center text-signal-red mx-auto mb-5 bg-panel">
+            <FolderGit2 size={24} />
+          </div>
+          <h2 className="font-display text-2xl sm:text-3xl font-black uppercase tracking-tight text-text mb-3">
+            No Repository Connected
+          </h2>
+          <p className="font-mono text-xs text-dim max-w-lg mx-auto mb-8 leading-relaxed">
+            Your workspace has no indexed repositories yet. Connect any GitHub repository to parse code files, generate 1536-dimensional embeddings, and chat with line-level citations.
+          </p>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <Link href="/ingest">
+              <Button variant="primary" size="lg" className="gap-2">
+                <Plus size={15} />
+                <span>Ingest First Repository</span>
+              </Button>
+            </Link>
+            <Link href="/docs">
+              <Button variant="secondary" size="lg" className="gap-2">
+                <BookOpen size={15} />
+                <span>Read Documentation</span>
+              </Button>
+            </Link>
+          </div>
         </div>
+      )}
+
+      {/* 3. Spacious Telemetry Metrics (3 across with generous padding) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Panel label="METRIC // 01" className="p-6">
+          <div className="flex flex-col justify-between h-full space-y-4">
+            <div className="flex items-center justify-between text-dim text-xs font-mono uppercase tracking-label">
+              <span>Repositories</span>
+              <FolderGit2 size={15} className="text-dim/60" />
+            </div>
+            <div>
+              <div className="font-display text-4xl sm:text-5xl font-black text-text tracking-tight">
+                {String(repos.length).padStart(2, '0')}
+              </div>
+              <p className="font-mono text-[11px] text-dim mt-2">
+                Connected to your personal account
+              </p>
+            </div>
+            <Link href="/repos" className="font-mono text-[11px] text-signal-red hover:underline flex items-center gap-1 pt-2 border-t border-border">
+              <span>Manage repositories</span>
+              <ArrowUpRight size={12} />
+            </Link>
+          </div>
+        </Panel>
+
+        <Panel label="METRIC // 02" className="p-6">
+          <div className="flex flex-col justify-between h-full space-y-4">
+            <div className="flex items-center justify-between text-dim text-xs font-mono uppercase tracking-label">
+              <span>Vector Chunks</span>
+              <Layers size={15} className="text-dim/60" />
+            </div>
+            <div>
+              <div className="font-display text-4xl sm:text-5xl font-black text-text tracking-tight">
+                {totalChunks.toLocaleString()}
+              </div>
+              <p className="font-mono text-[11px] text-dim mt-2">
+                {totalFiles} source files parsed
+              </p>
+            </div>
+            <Link href="/sources" className="font-mono text-[11px] text-signal-red hover:underline flex items-center gap-1 pt-2 border-t border-border">
+              <span>Browse code chunks</span>
+              <ArrowUpRight size={12} />
+            </Link>
+          </div>
+        </Panel>
+
+        <Panel label="METRIC // 03" className="p-6">
+          <div className="flex flex-col justify-between h-full space-y-4">
+            <div className="flex items-center justify-between text-dim text-xs font-mono uppercase tracking-label">
+              <span>Vector Engine</span>
+              <Sparkles size={15} className="text-dim/60" />
+            </div>
+            <div>
+              <div className="font-display text-4xl sm:text-5xl font-black text-text tracking-tight">
+                FAISS
+              </div>
+              <p className="font-mono text-[11px] text-dim mt-2">
+                1536-dim text-embedding-3-small
+              </p>
+            </div>
+            <Link href="/settings" className="font-mono text-[11px] text-signal-red hover:underline flex items-center gap-1 pt-2 border-t border-border">
+              <span>View hyperparameters</span>
+              <ArrowUpRight size={12} />
+            </Link>
+          </div>
+        </Panel>
+      </div>
+
+      {/* 4. Spacious Quick Launch Navigation Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+        <Link href="/chat" className="group">
+          <Panel className="p-6 h-full group-hover:border-signal-red transition-colors">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 rounded-[4px] border border-border bg-panel flex items-center justify-center text-text group-hover:border-signal-red group-hover:text-signal-red transition-colors">
+                <Terminal size={18} />
+              </div>
+              <ArrowUpRight size={16} className="text-dim group-hover:text-signal-red transition-colors" />
+            </div>
+            <h3 className="font-display text-lg font-bold uppercase tracking-tight text-text mb-1">
+              Ask Codebase
+            </h3>
+            <p className="font-mono text-xs text-dim leading-relaxed">
+              Query code structure, architectural patterns, and get line-accurate GitHub permalinks.
+            </p>
+          </Panel>
+        </Link>
+
+        <Link href="/ingest" className="group">
+          <Panel className="p-6 h-full group-hover:border-signal-red transition-colors">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 rounded-[4px] border border-border bg-panel flex items-center justify-center text-text group-hover:border-signal-red group-hover:text-signal-red transition-colors">
+                <Plus size={18} />
+              </div>
+              <ArrowUpRight size={16} className="text-dim group-hover:text-signal-red transition-colors" />
+            </div>
+            <h3 className="font-display text-lg font-bold uppercase tracking-tight text-text mb-1">
+              Ingest Repository
+            </h3>
+            <p className="font-mono text-xs text-dim leading-relaxed">
+              Connect a new repository by GitHub URL to clone, chunk, and generate vector indices.
+            </p>
+          </Panel>
+        </Link>
+
+        <Link href="/docs" className="group">
+          <Panel className="p-6 h-full group-hover:border-signal-red transition-colors">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 rounded-[4px] border border-border bg-panel flex items-center justify-center text-text group-hover:border-signal-red group-hover:text-signal-red transition-colors">
+                <BookOpen size={18} />
+              </div>
+              <ArrowUpRight size={16} className="text-dim group-hover:text-signal-red transition-colors" />
+            </div>
+            <h3 className="font-display text-lg font-bold uppercase tracking-tight text-text mb-1">
+              System Documentation
+            </h3>
+            <p className="font-mono text-xs text-dim leading-relaxed">
+              Learn how AST chunking, RAG retrieval, Clerk authentication, and Render deployment operate.
+            </p>
+          </Panel>
+        </Link>
       </div>
     </div>
   );

@@ -3,7 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Github, Terminal } from 'lucide-react';
+import { BookOpen, Terminal, LogIn } from 'lucide-react';
+import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 
 export const LandingNav: React.FC = () => {
   return (
@@ -26,26 +27,46 @@ export const LandingNav: React.FC = () => {
         <nav className="hidden md:flex items-center gap-6 font-mono text-[13px] uppercase tracking-label text-dim">
           <a href="#features" className="hover:text-text transition-colors">Features</a>
           <a href="#how-it-works" className="hover:text-text transition-colors">How it works</a>
-          <a href="#docs" className="hover:text-text transition-colors">Docs</a>
-          <a
-            href="https://github.com/sidty13/github-rag-assistant"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-text transition-colors flex items-center gap-1.5"
-          >
-            <Github size={14} />
-            <span>GitHub</span>
-          </a>
+          <Link href="/docs" className="hover:text-text transition-colors flex items-center gap-1.5">
+            <BookOpen size={14} />
+            <span>Docs</span>
+          </Link>
         </nav>
 
-        {/* Launch app button */}
+        {/* Auth / Action Buttons */}
         <div className="flex items-center gap-3">
-          <Link href="/overview">
-            <Button variant="primary" size="md" className="gap-2">
-              <Terminal size={14} />
-              <span>Launch app</span>
-            </Button>
-          </Link>
+          <SignedOut>
+            <Link href="/sign-in">
+              <Button variant="ghost" size="sm" className="gap-1.5 font-mono text-xs">
+                <LogIn size={13} />
+                <span>Sign in</span>
+              </Button>
+            </Link>
+            <Link href="/sign-up">
+              <Button variant="primary" size="sm" className="gap-1.5 font-mono text-xs">
+                <span>Get started</span>
+              </Button>
+            </Link>
+          </SignedOut>
+
+          <SignedIn>
+            <Link href="/overview">
+              <Button variant="primary" size="sm" className="gap-2 font-mono text-xs">
+                <Terminal size={14} />
+                <span>Launch app</span>
+              </Button>
+            </Link>
+            <div className="pl-1">
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: 'w-8 h-8 rounded-[4px] border border-border hover:border-signal-red transition-colors',
+                  },
+                }}
+              />
+            </div>
+          </SignedIn>
         </div>
       </div>
     </header>

@@ -12,6 +12,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  BookOpen,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: '/repos', label: 'Repos', icon: FolderGit2 },
   { href: '/chat', label: 'Chat', icon: Terminal },
   { href: '/sources', label: 'Sources', icon: Code2 },
+  { href: '/docs', label: 'Docs', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

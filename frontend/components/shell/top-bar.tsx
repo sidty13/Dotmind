@@ -4,19 +4,21 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Kbd } from '@/components/ui/kbd';
-import { MOCK_REPOSITORIES } from '@/lib/mock-data';
 import { Repository } from '@/lib/types';
 import { ChevronDown, Moon, Sun, Search, GitBranch } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
 
 interface TopBarProps {
   onOpenCommandPalette: () => void;
-  activeRepo: Repository;
+  activeRepo: Repository | null;
+  repos?: Repository[];
   onSelectRepo: (repo: Repository) => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
   onOpenCommandPalette,
   activeRepo,
+  repos = [],
   onSelectRepo,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -43,46 +45,62 @@ export const TopBar: React.FC<TopBarProps> = ({
         <span className="hidden sm:inline text-dim/40 font-mono">/</span>
 
         {/* Active Repo Selector Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-[4px] border border-border bg-raised hover:border-dim text-[13px] font-mono text-text transition-colors"
-          >
-            <StatusDot status={activeRepo.status} />
-            <span className="font-semibold truncate max-w-[150px] sm:max-w-[200px]">
-              {activeRepo.owner}/{activeRepo.name}
-            </span>
-            <ChevronDown size={12} className="text-dim ml-1" />
-          </button>
+        {activeRepo ? (
+          <div className="relative">
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-[4px] border border-border bg-raised hover:border-dim text-[13px] font-mono text-text transition-colors"
+            >
+              <StatusDot status={activeRepo.status} />
+              <span className="font-semibold truncate max-w-[150px] sm:max-w-[200px]">
+                {activeRepo.owner}/{activeRepo.name}
+              </span>
+              <ChevronDown size={12} className="text-dim ml-1" />
+            </button>
 
-          {dropdownOpen && (
-            <div className="absolute left-0 mt-1.5 w-64 rounded-[6px] border border-border bg-raised shadow-xl z-50 overflow-hidden font-mono text-[12px]">
-              <div className="p-2 border-b border-border text-[11px] uppercase tracking-label text-dim">
-                SELECT REPOSITORY
-              </div>
-              <div className="max-h-56 overflow-y-auto p-1">
-                {MOCK_REPOSITORIES.map((repo) => (
-                  <button
-                    key={repo.id}
-                    onClick={() => {
-                      onSelectRepo(repo);
-                      setDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between p-2 rounded-[3px] text-left hover:bg-panel transition-colors ${
-                      repo.id === activeRepo.id ? 'bg-panel text-signal-red font-bold' : 'text-text'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <StatusDot status={repo.status} size="sm" />
-                      <span className="truncate">{repo.owner}/{repo.name}</span>
+            {dropdownOpen && (
+              <div className="absolute left-0 mt-1.5 w-64 rounded-[6px] border border-border bg-raised shadow-xl z-50 overflow-hidden font-mono text-[12px]">
+                <div className="p-2 border-b border-border text-[11px] uppercase tracking-label text-dim">
+                  SELECT REPOSITORY
+                </div>
+                <div className="max-h-56 overflow-y-auto p-1">
+                  {repos.map((repo) => (
+                    <button
+                      key={repo.id}
+                      onClick={() => {
+                        onSelectRepo(repo);
+                        setDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between p-2 rounded-[3px] text-left hover:bg-panel transition-colors ${
+                        repo.id === activeRepo.id ? 'bg-panel text-signal-red font-bold' : 'text-text'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <StatusDot status={repo.status} size="sm" />
+                        <span className="truncate">{repo.owner}/{repo.name}</span>
+                      </div>
+                      <span className="text-[11px] text-dim">{repo.chunksCount} chk</span>
+                    </button>
+                  ))}
+                  {repos.length === 0 && (
+                    <div className="p-3 text-center text-dim text-xs">
+                      No other repositories.
                     </div>
-                    <span className="text-[11px] text-dim">{repo.chunksCount} chk</span>
-                  </button>
-                ))}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <Link
+            href="/ingest"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-[4px] border border-dashed border-border hover:border-signal-red text-[12px] font-mono text-dim hover:text-text transition-colors"
+          >
+            <span className="w-2 h-2 rounded-full bg-dim/40" />
+            <span>No repo connected</span>
+            <span className="text-[10px] text-signal-red uppercase font-bold">+ Ingest</span>
+          </Link>
+        )}
       </div>
 
       {/* Right: Command palette button + theme toggle */}
@@ -105,6 +123,18 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           {isLightMode ? <Moon size={14} /> : <Sun size={14} />}
         </button>
+
+        {/* User Account / Profile */}
+        <div className="pl-1 flex items-center">
+          <UserButton
+            afterSignOutUrl="/"
+            appearance={{
+              elements: {
+                avatarBox: 'w-8 h-8 rounded-[4px] border border-border hover:border-signal-red transition-colors',
+              },
+            }}
+          />
+        </div>
       </div>
     </header>
   );

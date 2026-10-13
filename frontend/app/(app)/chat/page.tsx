@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MOCK_CHAT_MESSAGES, MOCK_CITATIONS, MOCK_REPOSITORIES, MOCK_FILE_TREE } from '@/lib/mock-data';
+import { MOCK_CHAT_MESSAGES, MOCK_CITATIONS, MOCK_FILE_TREE } from '@/lib/mock-data';
+import { useRepo } from '@/context/repo-context';
 import { ChatMessage, Citation } from '@/lib/types';
 import { SourcesDrawer } from '@/components/chat/sources-drawer';
 import { SlashMenu } from '@/components/chat/slash-menu';
@@ -23,9 +24,9 @@ import {
 } from 'lucide-react';
 
 export default function ChatPage() {
+  const { activeRepo } = useRepo();
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_CHAT_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
-  const [activeRepo, setActiveRepo] = useState(MOCK_REPOSITORIES[0]);
   const [scope, setScope] = useState<'Whole repo' | 'starlette/routing.py' | 'starlette/middleware/'>('Whole repo');
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [highlightedCitationId, setHighlightedCitationId] = useState<number | null>(null);
@@ -85,7 +86,7 @@ export default function ChatPage() {
     const streamTarget =
       q.toLowerCase().includes('architecture')
         ? `Starlette is structured around three modular core layers [1]:\n\n1. **ASGI Kernel**: Implements the raw asynchronous server gateway interface.\n2. **Routing & Dispatch**: Handles path matching, regular expression extraction, and route mount points [1][2].\n3. **Middleware Pipeline**: Wraps requests in exception, CORS, and authentication handlers [3].\n\n\`\`\`python\n# Architectural core\napp = Starlette(routes=routes, middleware=middleware)\n\`\`\``
-        : `Based on **${activeRepo.name}** context, request handling begins in the router table [1].\n\nWhen a client submits an HTTP payload, the corresponding endpoint is resolved via \`Route.matches()\` [2]. If found, execution delegates to your custom handler function [3].`;
+        : `Based on **${activeRepo?.name || 'repository'}** context, request handling begins in the router table [1].\n\nWhen a client submits an HTTP payload, the corresponding endpoint is resolved via \`Route.matches()\` [2]. If found, execution delegates to your custom handler function [3].`;
 
     // Temporary streaming message with loader
     const assistantMsgId = `a-${Date.now()}`;
@@ -211,7 +212,7 @@ export default function ChatPage() {
             {/* Repo selector */}
             <div className="flex items-center gap-1.5 text-text font-bold">
               <FolderGit2 size={13} className="text-signal-red" />
-              <span>{activeRepo.owner}/{activeRepo.name}</span>
+              <span>{activeRepo ? `${activeRepo.owner}/${activeRepo.name}` : 'No repo selected'}</span>
             </div>
 
             <span className="text-dim/40">·</span>
@@ -252,7 +253,7 @@ export default function ChatPage() {
             <div className="h-full flex flex-col items-center justify-center text-center p-8 text-dim space-y-4">
               <span className="font-display text-4xl font-bold text-text/80">DotMind</span>
               <p className="max-w-md text-sm font-ui text-dim">
-                Query {activeRepo.owner}/{activeRepo.name} with exact line-level references.
+                Query {activeRepo ? `${activeRepo.owner}/${activeRepo.name}` : 'your codebase'} with exact line-level references.
               </p>
               <div className="flex items-center gap-2 flex-wrap justify-center pt-2">
                 <Chip

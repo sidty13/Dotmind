@@ -5,15 +5,10 @@ import { LeftRail } from '@/components/shell/left-rail';
 import { TopBar } from '@/components/shell/top-bar';
 import { StatusBar } from '@/components/shell/status-bar';
 import { CommandPalette } from '@/components/shell/command-palette';
-import { MOCK_REPOSITORIES } from '@/lib/mock-data';
-import { Repository } from '@/lib/types';
+import { RepoProvider, useRepo } from '@/context/repo-context';
 
-export default function AppShellLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [activeRepo, setActiveRepo] = useState<Repository>(MOCK_REPOSITORIES[0]);
+function ShellInner({ children }: { children: React.ReactNode }) {
+  const { activeRepo, repos, switchRepo } = useRepo();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   return (
@@ -26,7 +21,8 @@ export default function AppShellLayout({
         {/* Top Bar */}
         <TopBar
           activeRepo={activeRepo}
-          onSelectRepo={setActiveRepo}
+          repos={repos}
+          onSelectRepo={(r) => switchRepo(r.id)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         />
 
@@ -37,8 +33,8 @@ export default function AppShellLayout({
 
         {/* Bottom Status Bar (28px) */}
         <StatusBar
-          repoName={activeRepo.name}
-          vectorsCount={activeRepo.chunksCount}
+          repoName={activeRepo ? activeRepo.name : 'No Repo Connected'}
+          vectorsCount={activeRepo ? activeRepo.chunksCount : 0}
           kValue={5}
           isOnline={true}
         />
@@ -50,5 +46,17 @@ export default function AppShellLayout({
         onClose={() => setIsCommandPaletteOpen(false)}
       />
     </div>
+  );
+}
+
+export default function AppShellLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <RepoProvider>
+      <ShellInner>{children}</ShellInner>
+    </RepoProvider>
   );
 }

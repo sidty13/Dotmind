@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Terminal, FolderGit2, FileText, Settings, X, CornerDownLeft } from 'lucide-react';
-import { MOCK_REPOSITORIES } from '@/lib/mock-data';
+import { useRepo } from '@/context/repo-context';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ interface CommandItem {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
   const router = useRouter();
+  const { repos } = useRepo();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -115,7 +116,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       action: () => { router.push('/chat'); onClose(); },
     },
     // Repos
-    ...MOCK_REPOSITORIES.map((r) => ({
+    ...repos.map((r) => ({
       id: `r-${r.id}`,
       category: 'Repos' as const,
       title: `${r.owner}/${r.name}`,

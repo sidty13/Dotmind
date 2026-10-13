@@ -81,3 +81,90 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Clerk Dark Theme & Social Buttons Visibility */
+.cl-socialButtonsBlockButton {
+  background-color: #111111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #EDEDED !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.cl-socialButtonsBlockButton:hover {
+  background-color: #181818 !important;
+  border-color: #555555 !important;
+}
+
+.cl-socialButtonsBlockButtonText {
+  color: #EDEDED !important;
+  font-family: var(--font-jetbrains), monospace !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.cl-socialButtonsBlockButton__google {
+  color: #EDEDED !important;
+}
+
+.cl-dividerLine {
+  background-color: #222222 !important;
+}
+
+.cl-dividerText {
+  color: #8A8A8A !important;
+  font-family: var(--font-jetbrains), monospace !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+}
+
+.cl-formFieldLabel {
+  color: #8A8A8A !important;
+  font-family: var(--font-jetbrains), monospace !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+.cl-formFieldInput {
+  background-color: #111111 !important;
+  border: 1px solid #222222 !important;
+  color: #EDEDED !important;
+  border-radius: 4px !important;
+  font-family: var(--font-jetbrains), monospace !important;
+}
+
+.cl-formFieldInput:focus {
+  border-color: #D71921 !important;
+  outline: none !important;
+}
+
+.cl-headerTitle {
+  font-family: var(--font-doto), monospace !important;
+  color: #EDEDED !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+
+.cl-headerSubtitle {
+  color: #8A8A8A !important;
+  font-family: var(--font-jetbrains), monospace !important;
+  font-size: 12px !important;
+}
+
+.cl-footerActionText {
+  color: #8A8A8A !important;
+  font-family: var(--font-jetbrains), monospace !important;
+  font-size: 12px !important;
+}
+
+.cl-footerActionLink {
+  color: #D71921 !important;
+  font-family: var(--font-jetbrains), monospace !important;
+  font-size: 12px !important;
+  text-decoration: none !important;
+}
+
+.cl-footerActionLink:hover {
+  text-decoration: underline !important;
+}
+
