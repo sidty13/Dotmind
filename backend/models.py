@@ -17,7 +17,25 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-# 2. Pydantic Response Schema
+# 2. User-Repository Link Table Model
+class UserRepo(SQLModel, table=True):
+    __tablename__ = "user_repos"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: str = Field(index=True, nullable=False)  # clerk_id
+    repo_id: str = Field(index=True, nullable=False)
+    owner: str = Field(default="")
+    name: str = Field(default="")
+    repo_url: str = Field(nullable=False)
+    branch: Optional[str] = Field(default="main")
+    files_count: int = Field(default=0)
+    chunks_count: int = Field(default=0)
+    status: str = Field(default="READY")
+    is_active: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# 3. Pydantic Response Schema
 class UserResponse(SQLModel):
     id: int
     clerk_id: str

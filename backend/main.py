@@ -10,9 +10,10 @@ from pydantic import BaseModel
 import ingest_manager
 from retrieval import retrieve
 from rag_pipeline import generate_answer, generate_answer_stream
-from database import create_db_and_tables
+from database import create_db_and_tables, get_session
+from sqlmodel import Session, select
 import auth
-from models import User
+from models import User, UserRepo
 
 app = FastAPI(
     title="dotmind - GitHub RAG & Assistant API",
@@ -116,20 +117,60 @@ def health_check():
 
 
 @app.get("/repos")
-def list_repositories():
-    """List all ingested repositories with active indicator."""
-    repos = ingest_manager.list_ingested_repos()
-    for r in repos:
-        r["is_active"] = (r.get("repo_id") == state["repo_id"])
-    return {"repositories": repos}
+def list_repositories(
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    """List ingested repositories scoped to the authenticated user."""
+    if not current_user:
+        # Fallback to general storage if unauthenticated
+        repos = ingest_manager.list_ingested_repos()
+        for r in repos:
+            r["is_active"] = (r.get("repo_id") == state["repo_id"])
+        return {"repositories": repos}
+
+    # Query user's repos from database
+    user_repos = session.exec(
+        select(UserRepo).where(UserRepo.user_id == current_user.clerk_id)
+    ).all()
+
+    result = []
+    for ur in user_repos:
+        result.append({
+            "id": ur.repo_id,
+            "repo_id": ur.repo_id,
+            "owner": ur.owner or (ur.repo_id.split("_")[0] if "_" in ur.repo_id else ""),
+            "name": ur.name or (ur.repo_id.split("_")[1] if "_" in ur.repo_id else ur.repo_id),
+            "url": ur.repo_url,
+            "branch": ur.branch or "main",
+            "files_count": ur.files_count,
+            "chunks_count": ur.chunks_count,
+            "status": ur.status,
+            "is_active": ur.is_active or (ur.repo_id == state["repo_id"]),
+        })
+    return {"repositories": result}
 
 
 @app.post("/repos/switch")
-def switch_repository(req: SwitchRepoRequest):
-    """Hot-swap the active in-memory repository."""
+def switch_repository(
+    req: SwitchRepoRequest,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    """Hot-swap the active in-memory repository for the user."""
     success = load_active_repo(req.repo_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Repository '{req.repo_id}' not found.")
+
+    if current_user:
+        user_repos = session.exec(
+            select(UserRepo).where(UserRepo.user_id == current_user.clerk_id)
+        ).all()
+        for ur in user_repos:
+            ur.is_active = (ur.repo_id == req.repo_id)
+            session.add(ur)
+        session.commit()
+
     return {
         "status": "success",
         "active_repo_id": state["repo_id"],
@@ -138,10 +179,25 @@ def switch_repository(req: SwitchRepoRequest):
 
 
 @app.delete("/repos/{repo_id}")
-def delete_repository(repo_id: str):
-    """Delete a repository from storage."""
+def delete_repository(
+    repo_id: str,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    """Delete a repository from user's registry."""
+    if current_user:
+        ur = session.exec(
+            select(UserRepo).where(
+                UserRepo.user_id == current_user.clerk_id,
+                UserRepo.repo_id == repo_id
+            )
+        ).first()
+        if ur:
+            session.delete(ur)
+            session.commit()
+
     deleted = ingest_manager.delete_repo_storage(repo_id)
-    if not deleted:
+    if not deleted and not current_user:
         raise HTTPException(status_code=404, detail="Repository not found.")
 
     if state["repo_id"] == repo_id:
@@ -155,12 +211,49 @@ def delete_repository(repo_id: str):
 
 
 @app.post("/ingest")
-def start_ingest(req: IngestRequest, background_tasks: BackgroundTasks):
-    """Trigger an asynchronous ingestion job in the background."""
+def start_ingest(
+    req: IngestRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    """Trigger an asynchronous ingestion job and link to user."""
     if not req.url or "github.com" not in req.url:
         raise HTTPException(status_code=400, detail="Please provide a valid GitHub repository URL.")
 
+    repo_id = ingest_manager.get_repo_id(req.url)
     job_id = ingest_manager.create_job(req.url, req.branch)
+
+    # Link to authenticated user if available
+    if current_user:
+        existing = session.exec(
+            select(UserRepo).where(
+                UserRepo.user_id == current_user.clerk_id,
+                UserRepo.repo_id == repo_id
+            )
+        ).first()
+
+        owner, repo_name = "", repo_id
+        parts = req.url.rstrip("/").removesuffix(".git").split("/")
+        if len(parts) >= 2:
+            owner, repo_name = parts[-2], parts[-1]
+
+        if not existing:
+            count = session.exec(
+                select(UserRepo).where(UserRepo.user_id == current_user.clerk_id)
+            ).all()
+            new_ur = UserRepo(
+                user_id=current_user.clerk_id,
+                repo_id=repo_id,
+                owner=owner,
+                name=repo_name,
+                repo_url=req.url,
+                branch=req.branch or "main",
+                status="INDEXING",
+                is_active=(len(count) == 0),
+            )
+            session.add(new_ur)
+            session.commit()
 
     background_tasks.add_task(
         ingest_manager.run_ingest_pipeline,
@@ -173,7 +266,7 @@ def start_ingest(req: IngestRequest, background_tasks: BackgroundTasks):
     return {
         "status": "accepted",
         "job_id": job_id,
-        "repo_id": ingest_manager.get_repo_id(req.url),
+        "repo_id": repo_id,
         "message": "Ingestion started in background. Poll /ingest/status/{job_id} for updates.",
     }
 
@@ -266,4 +359,5 @@ def chat_with_repo_stream(req: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    port = int(os.environ.get("PORT", 8001))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

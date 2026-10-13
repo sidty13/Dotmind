@@ -42,6 +42,7 @@ backend/*.db
 frontend/node_modules/
 node_modules/
 frontend/.next/
+frontend/.env/
 .next/
 frontend/out/
 *.log

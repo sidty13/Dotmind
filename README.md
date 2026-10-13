@@ -67,8 +67,8 @@ dotmind/
 Ensure you have [`uv`](https://docs.astral.sh/uv/) installed:
 
 ```bash
-git clone https://github.com/sidty13/github-rag-assistant.git
-cd github-rag-assistant
+git clone <your-repository-url> dotmind
+cd dotmind
 uv sync
 ```
 

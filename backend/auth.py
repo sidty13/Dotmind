@@ -190,6 +190,19 @@ def get_current_user(
     return user
 
 
+def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    session: Session = Depends(get_session),
+) -> Optional[User]:
+    """Optional dependency: returns User if valid Bearer token is provided, or None."""
+    if not credentials:
+        return None
+    try:
+        return get_current_user(credentials, session)
+    except Exception:
+        return None
+
+
 # Endpoints
 @router.get("/config")
 def get_auth_config():
