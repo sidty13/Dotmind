@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { useRepo } from '@/context/repo-context';
@@ -17,8 +17,7 @@ import {
   FolderTree,
   RotateCw,
 } from 'lucide-react';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+import { API_BASE_URL } from '@/lib/api';
 
 const DEFAULT_SKIPPED_DIRS = ['.git', 'node_modules', '__pycache__', '.venv', 'tests', 'docs', '.github'];
 const DEFAULT_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.cpp', '.c', '.h', '.java', '.go', '.md', '.json', '.yaml'];
@@ -42,6 +41,14 @@ export default function IngestPage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [ingestResult, setIngestResult] = useState<any>(null);
 
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+
   // Toggle helpers
   const toggleDir = (dir: string) => {
     setSkippedDirs((prev) =>
@@ -59,6 +66,11 @@ export default function IngestPage() {
   const handleStartIngest = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!repoUrl.trim()) return;
+
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
 
     setIsIngesting(true);
     setIsDone(false);
@@ -94,12 +106,28 @@ export default function IngestPage() {
       const jobId = data.job_id;
       setLogs((l) => [...l, `[0.5s] Job accepted (${jobId}). Polling pipeline progress...`]);
 
+      let notFoundCount = 0;
+
       // Poll progress every 1000ms
-      const interval = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
         try {
           const statusRes = await fetch(`${API_BASE_URL}/ingest/status/${jobId}`);
-          if (!statusRes.ok) return;
+          if (!statusRes.ok) {
+            if (statusRes.status === 404) {
+              notFoundCount++;
+              if (notFoundCount >= 3) {
+                if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+                setIsIngesting(false);
+                setHasError(true);
+                setErrorMessage('Job not found on backend (HTTP 404). Server may have reloaded.');
+                setLogs((l) => [...l, `>[ERROR] Ingestion job lost on backend. Please retry.`]);
+              }
+            }
+            return;
+          }
 
+          notFoundCount = 0;
           const job = await statusRes.json();
 
           // Stage mapping
@@ -128,7 +156,9 @@ export default function IngestPage() {
           }
 
           if (job.status === 'completed') {
-            clearInterval(interval);
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+
             setCurrentStage('READY');
             setEmbedPercent(100);
             setIsDone(true);
@@ -142,7 +172,9 @@ export default function IngestPage() {
               await switchRepo(job.result.repo_id);
             }
           } else if (job.status === 'failed') {
-            clearInterval(interval);
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+
             setIsIngesting(false);
             setHasError(true);
             setErrorMessage(job.error || job.message || 'Ingestion failed on backend');

@@ -1,10 +1,16 @@
 import type { Metadata } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
+// @ts-ignore: side-effect CSS import without type declarations
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DotMind (0) — Talk to your codebase',
+  title: 'DotMind',
   description: 'Minimal, dot-matrix AI assistant for GitHub codebases with line-accurate citations.',
+   icons: {
+    icon: '/DOTMIND.png',
+    shortcut: '/DOTMIND.png',
+    apple: '/DOTMIND.png',
+  },  
 };
 
 export default function RootLayout({

@@ -21,8 +21,7 @@ const RepoContext = createContext<RepoContextType>({
   deleteRepo: async () => {},
   refreshRepos: async () => {},
 });
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+import { API_BASE_URL } from '@/lib/api';
 
 export const RepoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { getToken, isSignedIn } = useAuth();

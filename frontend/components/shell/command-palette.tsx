@@ -8,6 +8,8 @@ import { useRepo } from '@/context/repo-context';
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Open if closed, close if open. Needed so the shortcut can OPEN the palette. */
+  onToggle?: () => void;
 }
 
 interface CommandItem {
@@ -19,141 +21,117 @@ interface CommandItem {
   action: () => void;
 }
 
-export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
+export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onToggle }) => {
   const router = useRouter();
-  const { repos } = useRepo();
+  const { repos, switchRepo } = useRepo();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Global keydown listener for Cmd/Ctrl+K and Escape
+  // Global shortcut: Windows/Super/Cmd + K  (Ctrl + K also works). Esc closes.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      const isK = e.code === 'KeyK' || e.key.toLowerCase() === 'k';
+      if ((e.metaKey || e.ctrlKey) && isK) {
         e.preventDefault();
-        onClose(); // toggle
+        e.stopPropagation();
+        if (onToggle) onToggle();
+        else if (isOpen) onClose();
+        return;
       }
       if (e.key === 'Escape' && isOpen) {
+        e.preventDefault();
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+    // capture = true so the browser/app doesn't swallow it first
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, onClose, onToggle]);
+
+  // Fresh state every time it opens
+  useEffect(() => {
+    if (isOpen) {
+      setQuery('');
+      setSelectedIndex(0);
+    }
+  }, [isOpen]);
+
+  const go = (path: string) => {
+    router.push(path);
+    onClose();
+  };
 
   const items: CommandItem[] = [
     // Pages
-    {
-      id: 'p-overview',
-      category: 'Pages',
-      title: 'Go to Overview',
-      subtitle: '/overview',
-      icon: Terminal,
-      action: () => { router.push('/overview'); onClose(); },
-    },
-    {
-      id: 'p-ingest',
-      category: 'Pages',
-      title: 'Go to Ingest',
-      subtitle: '/ingest',
-      icon: FolderGit2,
-      action: () => { router.push('/ingest'); onClose(); },
-    },
-    {
-      id: 'p-chat',
-      category: 'Pages',
-      title: 'Go to Terminal Chat',
-      subtitle: '/chat',
-      icon: Terminal,
-      action: () => { router.push('/chat'); onClose(); },
-    },
-    {
-      id: 'p-repos',
-      category: 'Pages',
-      title: 'Go to Repositories',
-      subtitle: '/repos',
-      icon: FolderGit2,
-      action: () => { router.push('/repos'); onClose(); },
-    },
-    {
-      id: 'p-sources',
-      category: 'Pages',
-      title: 'Go to Sources Code Viewer',
-      subtitle: '/sources',
-      icon: FileText,
-      action: () => { router.push('/sources'); onClose(); },
-    },
-    {
-      id: 'p-settings',
-      category: 'Pages',
-      title: 'Go to Settings',
-      subtitle: '/settings',
-      icon: Settings,
-      action: () => { router.push('/settings'); onClose(); },
-    },
+    { id: 'p-overview', category: 'Pages', title: 'Go to Overview', subtitle: '/overview', icon: Terminal, action: () => go('/overview') },
+    { id: 'p-ingest', category: 'Pages', title: 'Go to Ingest', subtitle: '/ingest', icon: FolderGit2, action: () => go('/ingest') },
+    { id: 'p-chat', category: 'Pages', title: 'Go to Terminal Chat', subtitle: '/chat', icon: Terminal, action: () => go('/chat') },
+    { id: 'p-repos', category: 'Pages', title: 'Go to Repositories', subtitle: '/repos', icon: FolderGit2, action: () => go('/repos') },
+    { id: 'p-sources', category: 'Pages', title: 'Go to Sources Code Viewer', subtitle: '/sources', icon: FileText, action: () => go('/sources') },
+    { id: 'p-settings', category: 'Pages', title: 'Go to Settings', subtitle: '/settings', icon: Settings, action: () => go('/settings') },
     // Commands
-    {
-      id: 'c-ingest',
-      category: 'Commands',
-      title: '/ingest <url>',
-      subtitle: 'Index a new GitHub repository',
-      icon: Terminal,
-      action: () => { router.push('/ingest'); onClose(); },
-    },
-    {
-      id: 'c-switch',
-      category: 'Commands',
-      title: '/switch',
-      subtitle: 'Change active codebase context',
-      icon: Terminal,
-      action: () => { router.push('/repos'); onClose(); },
-    },
-    {
-      id: 'c-clear',
-      category: 'Commands',
-      title: '/clear',
-      subtitle: 'Reset current chat session memory',
-      icon: Terminal,
-      action: () => { router.push('/chat'); onClose(); },
-    },
-    // Repos
+    { id: 'c-ingest', category: 'Commands', title: '/ingest <url>', subtitle: 'Index a new GitHub repository', icon: Terminal, action: () => go('/ingest') },
+    { id: 'c-switch', category: 'Commands', title: '/switch', subtitle: 'Change active codebase context', icon: Terminal, action: () => go('/repos') },
+    { id: 'c-clear', category: 'Commands', title: '/clear', subtitle: 'Open chat to clear the screen', icon: Terminal, action: () => go('/chat') },
+    // Repos: actually switch the active repo, then open chat
     ...repos.map((r) => ({
       id: `r-${r.id}`,
       category: 'Repos' as const,
       title: `${r.owner}/${r.name}`,
-      subtitle: `${r.chunksCount} chunks · ${r.branch}`,
+      subtitle: `${r.chunksCount ?? 0} chunks · ${r.branch && r.branch !== 'default' ? r.branch : 'main'}`,
       icon: FolderGit2,
-      action: () => { router.push(`/chat?repo=${r.id}`); onClose(); },
+      action: () => {
+        switchRepo(r.id);
+        go('/chat');
+      },
     })),
   ];
 
-  const filtered = items.filter((item) =>
-    item.title.toLowerCase().includes(query.toLowerCase()) ||
-    (item.subtitle && item.subtitle.toLowerCase().includes(query.toLowerCase()))
+  const q = query.toLowerCase();
+  const filtered = items.filter(
+    (item) =>
+      item.title.toLowerCase().includes(q) ||
+      (item.subtitle && item.subtitle.toLowerCase().includes(q))
+  );
+
+  // Visual order is grouped by category, so navigate in that same order
+  const ordered = ['Pages', 'Commands', 'Repos'].flatMap((cat) =>
+    filtered.filter((i) => i.category === cat)
   );
 
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
 
+  // Keep the highlighted row visible while using arrow keys
+  useEffect(() => {
+    const id = ordered[selectedIndex]?.id;
+    if (id) document.getElementById(`cmd-${id}`)?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const n = ordered.length || 1;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % (filtered.length || 1));
+      setSelectedIndex((prev) => (prev + 1) % n);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + (filtered.length || 1)) % (filtered.length || 1));
+      setSelectedIndex((prev) => (prev - 1 + n) % n);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filtered[selectedIndex]) {
-        filtered[selectedIndex].action();
-      }
+      ordered[selectedIndex]?.action();
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         className="w-full max-w-xl rounded-[8px] border border-border bg-panel shadow-2xl overflow-hidden font-mono"
         onKeyDown={handleKeyDown}
@@ -176,13 +154,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
         {/* Results list */}
         <div className="max-h-80 overflow-y-auto p-2 divide-y divide-border/40">
-          {filtered.length === 0 ? (
+          {ordered.length === 0 ? (
             <div className="p-8 text-center text-dim text-[13px]">
               No results found for &quot;{query}&quot;
             </div>
           ) : (
             ['Pages', 'Commands', 'Repos'].map((cat) => {
-              const catItems = filtered.filter((i) => i.category === cat);
+              const catItems = ordered.filter((i) => i.category === cat);
               if (catItems.length === 0) return null;
 
               return (
@@ -191,13 +169,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                     {cat}
                   </div>
                   {catItems.map((item) => {
-                    const globalIdx = filtered.indexOf(item);
+                    const globalIdx = ordered.indexOf(item);
                     const isSelected = globalIdx === selectedIndex;
                     const Icon = item.icon;
 
                     return (
                       <button
                         key={item.id}
+                        id={`cmd-${item.id}`}
                         onClick={item.action}
                         onMouseEnter={() => setSelectedIndex(globalIdx)}
                         className={`w-full flex items-center justify-between px-2.5 py-2 rounded-[4px] text-left transition-colors cursor-pointer ${
@@ -212,9 +191,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                             {item.title}
                           </span>
                           {item.subtitle && (
-                            <span className="text-[11px] text-dim/60 truncate">
-                              {item.subtitle}
-                            </span>
+                            <span className="text-[11px] text-dim/60 truncate">{item.subtitle}</span>
                           )}
                         </div>
                         {isSelected && (

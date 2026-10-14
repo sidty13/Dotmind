@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Kbd } from '@/components/ui/kbd';
 import { Repository } from '@/lib/types';
-import { ChevronDown, Moon, Sun, Search, GitBranch } from 'lucide-react';
+import { ChevronDown, Moon, Sun, Search } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
+import Image from 'next/image';
 
 interface TopBarProps {
   onOpenCommandPalette: () => void;
@@ -23,6 +24,25 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+  const [shortcutLabel, setShortcutLabel] = useState('Ctrl+K');
+
+  // Pick the label for the user's OS after mount (avoids a hydration mismatch)
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    if (/Mac|iPhone|iPad/i.test(ua)) setShortcutLabel('⌘K');
+    else if (/Windows/i.test(ua)) setShortcutLabel('Win+K');
+    else setShortcutLabel('Super+K');
+  }, []);
+
+  // Close the repo dropdown on Escape
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDropdownOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dropdownOpen]);
 
   const toggleTheme = () => {
     setIsLightMode(!isLightMode);
@@ -33,14 +53,22 @@ export const TopBar: React.FC<TopBarProps> = ({
     <header className="h-14 border-b border-border bg-panel px-4 sm:px-6 flex items-center justify-between select-none shrink-0 z-30">
       {/* Left: Wordmark & Repo selector dropdown */}
       <div className="flex items-center gap-4">
-        <Link href="/overview" className="hidden sm:flex items-center gap-2">
-          <span className="font-display text-xl font-bold tracking-tight text-text">
-            DotMind
-          </span>
-          <span className="text-[10px] font-mono text-signal-red border border-signal-red/40 px-1 py-0.2 rounded-[2px]">
-            PROD
-          </span>
-        </Link>
+      <Link href="/overview" className="hidden sm:flex items-center gap-2">
+  <Image
+    src="/DOTMIND.png"
+    alt="DotMind"
+    width={28}
+    height={28}
+    priority
+    className="h-7 w-7 object-contain"
+  />
+  <span className="font-display text-xl font-bold tracking-tight text-text">
+    DotMind
+  </span>
+  <span className="text-[10px] font-mono text-signal-red border border-signal-red/40 px-1 py-0.2 rounded-[2px]">
+    PROD
+  </span>
+</Link>
 
         <span className="hidden sm:inline text-dim/40 font-mono">/</span>
 
@@ -59,36 +87,40 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
 
             {dropdownOpen && (
-              <div className="absolute left-0 mt-1.5 w-64 rounded-[6px] border border-border bg-raised shadow-xl z-50 overflow-hidden font-mono text-[12px]">
-                <div className="p-2 border-b border-border text-[11px] uppercase tracking-label text-dim">
-                  SELECT REPOSITORY
-                </div>
-                <div className="max-h-56 overflow-y-auto p-1">
-                  {repos.map((repo) => (
-                    <button
-                      key={repo.id}
-                      onClick={() => {
-                        onSelectRepo(repo);
-                        setDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between p-2 rounded-[3px] text-left hover:bg-panel transition-colors ${
-                        repo.id === activeRepo.id ? 'bg-panel text-signal-red font-bold' : 'text-text'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <StatusDot status={repo.status} size="sm" />
-                        <span className="truncate">{repo.owner}/{repo.name}</span>
+              <>
+                {/* Click-away layer */}
+                <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+                <div className="absolute left-0 mt-1.5 w-64 rounded-[6px] border border-border bg-raised shadow-xl z-50 overflow-hidden font-mono text-[12px]">
+                  <div className="p-2 border-b border-border text-[11px] uppercase tracking-label text-dim">
+                    SELECT REPOSITORY
+                  </div>
+                  <div className="max-h-56 overflow-y-auto p-1">
+                    {repos.map((repo) => (
+                      <button
+                        key={repo.id}
+                        onClick={() => {
+                          onSelectRepo(repo);
+                          setDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-[3px] text-left hover:bg-panel transition-colors ${
+                          repo.id === activeRepo.id ? 'bg-panel text-signal-red font-bold' : 'text-text'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <StatusDot status={repo.status} size="sm" />
+                          <span className="truncate">{repo.owner}/{repo.name}</span>
+                        </div>
+                        <span className="text-[11px] text-dim">{repo.chunksCount ?? 0} chk</span>
+                      </button>
+                    ))}
+                    {repos.length === 0 && (
+                      <div className="p-3 text-center text-dim text-xs">
+                        No other repositories.
                       </div>
-                      <span className="text-[11px] text-dim">{repo.chunksCount} chk</span>
-                    </button>
-                  ))}
-                  {repos.length === 0 && (
-                    <div className="p-3 text-center text-dim text-xs">
-                      No other repositories.
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         ) : (
@@ -109,10 +141,11 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenCommandPalette}
           className="flex items-center gap-2 px-3 py-1.5 rounded-[4px] border border-border bg-raised hover:border-dim text-[12px] font-mono text-dim hover:text-text transition-colors"
+          title={`Open command palette (${shortcutLabel} or Ctrl+K)`}
         >
           <Search size={13} />
           <span className="hidden md:inline">Command Palette</span>
-          <Kbd>⌘K</Kbd>
+          <Kbd>{shortcutLabel}</Kbd>
         </button>
 
         {/* Theme Toggle */}

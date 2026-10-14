@@ -22,6 +22,13 @@ export const RepoCard: React.FC<RepoCardProps> = ({
   onResync,
   onDelete,
 }) => {
+  // The backend doesn't send these yet, so never assume they exist
+  const languages = repo.languages ?? [];
+  const branch = repo.branch && repo.branch !== 'default' ? repo.branch : 'main';
+  const filesCount = repo.filesCount ?? 0;
+  const chunksCount = repo.chunksCount ?? 0;
+  const progressPercent = repo.progressPercent ?? 0;
+
   return (
     <div
       className={`border rounded-[6px] bg-panel p-4 flex flex-col justify-between transition-all duration-200 ${
@@ -33,7 +40,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
       <div>
         {/* Header row */}
         <div className="flex items-start justify-between gap-2 mb-2 font-mono">
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <StatusDot status={repo.status} />
               <h3 className="text-base font-bold text-text truncate">
@@ -43,10 +50,14 @@ export const RepoCard: React.FC<RepoCardProps> = ({
             <div className="flex items-center gap-2 text-[11px] text-dim mt-0.5 ml-4">
               <span className="flex items-center gap-1">
                 <GitBranch size={11} />
-                <span>{repo.branch}</span>
+                <span>{branch}</span>
               </span>
-              <span>·</span>
-              <span>{repo.lastIndexed}</span>
+              {repo.lastIndexed && (
+                <>
+                  <span>·</span>
+                  <span>{repo.lastIndexed}</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -64,7 +75,9 @@ export const RepoCard: React.FC<RepoCardProps> = ({
               <DotLoader size="sm" />
               <span className="text-dim">Vectorizing code files...</span>
             </div>
-            <span className="text-signal-red font-bold">{repo.progressPercent}%</span>
+            {repo.progressPercent != null && (
+              <span className="text-signal-red font-bold">{progressPercent}%</span>
+            )}
           </div>
         )}
 
@@ -72,34 +85,38 @@ export const RepoCard: React.FC<RepoCardProps> = ({
         <div className="grid grid-cols-2 gap-2 my-3 py-2 border-y border-border/60 text-xs font-mono">
           <div>
             <span className="text-dim text-[11px] block uppercase tracking-label">FILES:</span>
-            <span className="text-text font-bold">{repo.filesCount}</span>
+            <span className="text-text font-bold">{filesCount}</span>
           </div>
           <div>
             <span className="text-dim text-[11px] block uppercase tracking-label">CHUNKS:</span>
-            <span className="text-text font-bold">{repo.chunksCount}</span>
+            <span className="text-text font-bold">{chunksCount}</span>
           </div>
         </div>
 
-        {/* Languages as tiny dot-bars */}
-        <div className="space-y-1 mb-4">
-          <div className="flex items-center justify-between text-[11px] font-mono text-dim">
-            <span>LANGUAGES</span>
-            <span>{repo.languages.map((l) => `${l.name} ${l.percent}%`).join(' · ')}</span>
+        {/* Languages as tiny dot-bars (hidden until the backend provides them) */}
+        {languages.length > 0 && (
+          <div className="space-y-1 mb-4">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-dim">
+              <span>LANGUAGES</span>
+              <span className="truncate">
+                {languages.map((l) => `${l.name} ${l.percent}%`).join(' · ')}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 h-1.5">
+              {languages.map((l, i) => (
+                <div
+                  key={i}
+                  className="h-full rounded-sm"
+                  style={{
+                    width: `${l.percent}%`,
+                    backgroundColor: i === 0 ? '#D71921' : '#8A8A8A',
+                  }}
+                  title={`${l.name}: ${l.percent}%`}
+                />
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-1 h-1.5">
-            {repo.languages.map((l, i) => (
-              <div
-                key={i}
-                className="h-full rounded-sm"
-                style={{
-                  width: `${l.percent}%`,
-                  backgroundColor: i === 0 ? '#D71921' : '#8A8A8A',
-                }}
-                title={`${l.name}: ${l.percent}%`}
-              />
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Actions */}

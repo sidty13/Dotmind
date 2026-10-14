@@ -15,15 +15,23 @@ import {
   Square,
   Copy,
   RotateCw,
-  ThumbsUp,
-  ThumbsDown,
   Layers,
-  ChevronDown,
-  FileCode,
   FolderGit2,
 } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+type HistoryRow = {
+  id: number;
+  question: string;
+  answer: string;
+  createdAt: string;
+};
+
+// The DB returns naive UTC timestamps; make sure JS reads them as UTC.
+const toTime = (iso: string) => {
+  const safe = /Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`;
+  return new Date(safe).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
 
 export default function ChatPage() {
   const { getToken, isSignedIn } = useAuth();
@@ -47,6 +55,67 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming]);
+
+  // Load saved chat history whenever the active repo changes
+  useEffect(() => {
+    setMessages([]);
+    setCitationsList([]);
+    if (!activeRepo) return;
+
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (isSignedIn) {
+          const token = await getToken();
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const r = await fetch(
+          `${API_BASE_URL}/repos/${encodeURIComponent(activeRepo.id)}/history?limit=50`,
+          { headers, signal: controller.signal }
+        );
+        if (!r.ok) return;
+
+        const rows: HistoryRow[] = await r.json();
+
+        // API returns newest first; chat shows oldest first
+        const loaded: ChatMessage[] = rows
+          .slice()
+          .reverse()
+          .flatMap((row) => {
+            const time = toTime(row.createdAt);
+            const pair: ChatMessage[] = [
+              {
+                id: `h-${row.id}-u`,
+                role: 'user',
+                content: row.question,
+                timestamp: time,
+              },
+            ];
+            if (row.answer) {
+              pair.push({
+                id: `h-${row.id}-a`,
+                role: 'assistant',
+                content: row.answer,
+                timestamp: time,
+                citations: [],
+                isStreaming: false,
+              });
+            }
+            return pair;
+          });
+
+        // Don't overwrite anything the user already started typing/sending
+        setMessages((prev) => (prev.length ? prev : loaded));
+      } catch {
+        // History is a nice-to-have; ignore failures
+      }
+    })();
+
+    return () => controller.abort();
+  }, [activeRepo?.id, isSignedIn]);
 
   // Handle Input change & trigger slash or file mentions
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -445,6 +514,7 @@ export default function ChatPage() {
             <SlashMenu
               onSelect={(cmd) => {
                 if (cmd === '/clear') {
+                  // Clears the screen only; saved history stays in the database
                   setMessages([]);
                   setInputPrompt('');
                   setShowSlashMenu(false);

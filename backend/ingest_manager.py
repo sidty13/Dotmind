@@ -11,11 +11,42 @@ from repo_loader import clone_repo, load_files
 from chunker import chunk_all_files
 from embeddings import embed_chunks, build_faiss_index, save_index, load_index
 
+import tempfile
+
 STORAGE_DIR = "storage"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
+TEMP_REPOS_DIR = os.path.join(tempfile.gettempdir(), "dotmind_temp_repos")
+os.makedirs(TEMP_REPOS_DIR, exist_ok=True)
+
+JOBS_FILE = os.path.join(STORAGE_DIR, "jobs.json")
+
 # In-memory job tracker: { job_id: {...} }
 jobs: Dict[str, Dict[str, Any]] = {}
+
+
+def _save_jobs():
+    """Persist jobs map to storage/jobs.json to survive server restarts."""
+    try:
+        with open(JOBS_FILE, "w") as f:
+            json.dump(jobs, f, indent=2)
+    except Exception as e:
+        print(f"Warning: could not save jobs to disk: {e}")
+
+
+def _load_jobs():
+    """Load jobs from storage/jobs.json if exists."""
+    if os.path.exists(JOBS_FILE):
+        try:
+            with open(JOBS_FILE, "r") as f:
+                saved = json.load(f)
+                jobs.update(saved)
+        except Exception as e:
+            print(f"Warning: could not load jobs from disk: {e}")
+
+
+# Preload jobs on module import
+_load_jobs()
 
 
 def get_repo_id(repo_url: str) -> str:
@@ -49,10 +80,13 @@ def create_job(repo_url: str, branch: Optional[str] = None) -> str:
         "created_at": datetime.utcnow().isoformat(),
         "result": None,
     }
+    _save_jobs()
     return job_id
 
 
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    if job_id not in jobs:
+        _load_jobs()
     return jobs.get(job_id)
 
 
@@ -85,15 +119,17 @@ def run_ingest_pipeline(job_id: str, repo_url: str, branch: Optional[str] = None
             return
 
         job["status"] = "in_progress"
+        _save_jobs()
 
-        # 1. Clone
-        job.update({"stage": "cloning", "progress": 10, "message": f"Cloning {repo_url}..."})
-        clone_dest = os.path.join("temp_repos", repo_id)
+        clone_dest = os.path.join(TEMP_REPOS_DIR, repo_id)
         if os.path.exists(clone_dest):
             shutil.rmtree(clone_dest, ignore_errors=True)
 
+        # 1. Clone
+        job.update({"stage": "cloning", "progress": 10, "message": f"Cloning {repo_url}..."})
+        _save_jobs()
+
         from git import Repo
-        os.makedirs("temp_repos", exist_ok=True)
         if branch:
             Repo.clone_from(repo_url, clone_dest, branch=branch)
         else:
@@ -101,6 +137,7 @@ def run_ingest_pipeline(job_id: str, repo_url: str, branch: Optional[str] = None
 
         # 2. Parse & Chunk
         job.update({"stage": "parsing", "progress": 30, "message": "Parsing code files & creating chunks..."})
+        _save_jobs()
         files = load_files(clone_dest)
         if not files:
             raise ValueError("No supported source code files found in repository.")
@@ -110,26 +147,26 @@ def run_ingest_pipeline(job_id: str, repo_url: str, branch: Optional[str] = None
 
         # 3. Embed (Progress 35% -> 85%)
         job.update({"stage": "embedding", "progress": 35, "message": f"Generating OpenAI embeddings for {total_chunks} chunks..."})
+        _save_jobs()
 
         def on_embed_progress(fraction: float):
             # Scale from 35% to 85%
             scaled = 35 + int(fraction * 50)
             job["progress"] = scaled
             job["message"] = f"Embedding chunks: {int(fraction * 100)}% complete"
+            _save_jobs()
 
         vectors = embed_chunks(chunks, progress_callback=on_embed_progress)
 
         # 4. Build FAISS Index & Save
         job.update({"stage": "saving", "progress": 90, "message": "Building FAISS vector index & saving..."})
+        _save_jobs()
         os.makedirs(repo_dir, exist_ok=True)
 
         index = build_faiss_index(vectors)
         save_index(index, index_path)
         with open(chunks_path, "wb") as f:
             pickle.dump(chunks, f)
-
-        # Clean up temporary clone
-        shutil.rmtree(clone_dest, ignore_errors=True)
 
         meta = {
             "repo_id": repo_id,
@@ -149,6 +186,7 @@ def run_ingest_pipeline(job_id: str, repo_url: str, branch: Optional[str] = None
             "message": f"Repository successfully ingested! ({len(files)} files, {total_chunks} chunks)",
             "result": meta,
         })
+        _save_jobs()
 
     except Exception as e:
         print(f"Ingestion failed for {repo_url}: {e}")
@@ -158,6 +196,11 @@ def run_ingest_pipeline(job_id: str, repo_url: str, branch: Optional[str] = None
             "error": str(e),
             "message": f"Ingestion failed: {e}",
         })
+        _save_jobs()
+    finally:
+        # Clean up temporary clone from /tmp
+        if os.path.exists(clone_dest):
+            shutil.rmtree(clone_dest, ignore_errors=True)
 
 
 def list_ingested_repos() -> list[dict]:

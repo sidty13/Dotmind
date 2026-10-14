@@ -14,6 +14,7 @@ import {
   ChevronRight,
   BookOpen,
 } from 'lucide-react';
+import Image from 'next/image';
 
 const NAV_ITEMS = [
   { href: '/overview', label: 'Overview', icon: LayoutDashboard },
@@ -21,7 +22,7 @@ const NAV_ITEMS = [
   { href: '/repos', label: 'Repos', icon: FolderGit2 },
   { href: '/chat', label: 'Chat', icon: Terminal },
   { href: '/sources', label: 'Sources', icon: Code2 },
-  { href: '/docs', label: 'Docs', icon: BookOpen },
+ 
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -45,16 +46,18 @@ export const LeftRail: React.FC = () => {
       {/* Top Section / Brand Icon */}
       <div>
         <div className="h-14 flex items-center justify-between px-5 border-b border-border">
-          <Link href="/" className="flex items-center gap-3 overflow-hidden">
-            <div className="w-6 h-6 rounded-full border border-signal-red flex items-center justify-center shrink-0">
-              <span className="w-2 h-2 rounded-full bg-signal-red animate-pulse" />
-            </div>
-            {isExpanded && (
-              <span className="font-display text-lg font-bold text-text truncate">
-                DotMind
-              </span>
-            )}
-          </Link>
+             <Link href="/overview" className="hidden sm:flex items-center gap-2">
+           <Image
+             src="/DOTMIND.png"
+             alt="DotMind"
+             width={28}
+             height={28}
+             priority
+             className="h-7 w-7 object-contain"
+           />
+          
+           
+         </Link>
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -124,18 +127,7 @@ export const LeftRail: React.FC = () => {
       </div>
 
       {/* Bottom Rail Metadata */}
-      <div className="p-3 border-t border-border font-mono text-[11px] text-dim/70 truncate">
-        {isExpanded ? (
-          <div className="flex items-center justify-between">
-            <span>RAG_V1 // ONLINE</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-ready-green" />
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-ready-green" />
-          </div>
-        )}
-      </div>
+      
     </aside>
   );
 };

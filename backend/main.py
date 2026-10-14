@@ -1,4 +1,11 @@
+import sys
 import os
+
+# Ensure backend directory is in python search path
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 import shutil
 import json
 from typing import List, Optional
@@ -13,7 +20,7 @@ from rag_pipeline import generate_answer, generate_answer_stream
 from database import create_db_and_tables, get_session
 from sqlmodel import Session, select
 import auth
-from models import User, UserRepo
+from models import User, UserRepo, RetrievalLog, QueryLog
 
 app = FastAPI(
     title="dotmind - GitHub RAG & Assistant API",
@@ -184,6 +191,62 @@ def switch_repository(
     }
 
 
+@app.get("/repos/{repo_id}/citations")
+def get_repo_citations(
+    repo_id: str,
+    limit: int = 200,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    """Return chunks retrieved for past queries on this repo (powers the Sources page)."""
+    stmt = select(RetrievalLog).where(RetrievalLog.repo_id == repo_id)
+    if current_user:
+        stmt = stmt.where(RetrievalLog.user_id == current_user.clerk_id)
+    else:
+        stmt = stmt.where(RetrievalLog.user_id == None)  # noqa: E711
+
+    rows = session.exec(
+        stmt.order_by(RetrievalLog.created_at.desc()).limit(limit)
+    ).all()
+
+    return [
+        {
+            "filePath": r.file_path,
+            "startLine": r.start_line or 1,
+            "endLine": r.end_line or r.start_line or 1,
+            "query": r.query,
+            "score": r.score,
+        }
+        for r in rows
+    ]
+
+
+@app.get("/repos/{repo_id}/history")
+def get_repo_history(
+    repo_id: str,
+    limit: int = 50,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    """Return past questions (and answers) asked on this repo, newest first."""
+    stmt = select(QueryLog).where(QueryLog.repo_id == repo_id)
+    if current_user:
+        stmt = stmt.where(QueryLog.user_id == current_user.clerk_id)
+    else:
+        stmt = stmt.where(QueryLog.user_id == None)  # noqa: E711
+
+    rows = session.exec(stmt.order_by(QueryLog.created_at.desc()).limit(limit)).all()
+    return [
+        {
+            "id": r.id,
+            "question": r.question,
+            "answer": r.answer,
+            "createdAt": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
 @app.delete("/repos/{repo_id}")
 def delete_repository(
     repo_id: str,
@@ -280,7 +343,7 @@ def start_ingest(
 
 
 @app.get("/ingest/status/{job_id}")
-def get_ingest_status(job_id: str):
+def get_ingest_status(job_id: str, session: Session = Depends(get_session)):
     job = ingest_manager.get_job(job_id)
 
     if not job:
@@ -296,6 +359,17 @@ def get_ingest_status(job_id: str):
                     status_code=500,
                     detail=f"Repository '{repo_id}' was indexed but could not be loaded."
                 )
+
+        if repo_id:
+            user_repo = session.exec(
+                select(UserRepo).where(UserRepo.repo_id == repo_id)
+            ).first()
+            if user_repo and user_repo.status != "READY":
+                user_repo.status = "READY"
+                user_repo.files_count = job.get("result", {}).get("files_count", 0)
+                user_repo.chunks_count = job.get("result", {}).get("chunks_count", 0)
+                session.add(user_repo)
+                session.commit()
 
     return job
 
@@ -322,9 +396,46 @@ def format_source_list(context_chunks: list[dict]) -> list[dict]:
     return sources
 
 
+def log_retrieval(session: Session, user: Optional[User], question: str, chunks: list[dict]):
+    """Persist which chunks were retrieved for a question (never breaks chat on failure)."""
+    try:
+        for c in chunks:
+            session.add(RetrievalLog(
+                repo_id=state["repo_id"],
+                user_id=user.clerk_id if user else None,
+                query=question,
+                file_path=c["path"],
+                start_line=c.get("start_line"),
+                end_line=c.get("end_line"),
+                score=float(c["score"]),
+            ))
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Failed to log retrieval: {e}")
+
+
+def save_query(repo_id: str, user_id: Optional[str], question: str, answer: str):
+    """Save a question + answer using its own session (safe to call while streaming)."""
+    gen = get_session()
+    s = next(gen)
+    try:
+        s.add(QueryLog(repo_id=repo_id, user_id=user_id, question=question, answer=answer))
+        s.commit()
+    except Exception as e:
+        s.rollback()
+        print(f"Failed to save query: {e}")
+    finally:
+        gen.close()
+
+
 @app.post("/chat")
 @app.post("/ask")
-def chat_with_repo(req: ChatRequest):
+def chat_with_repo(
+    req: ChatRequest,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
     """Standard (non-streaming) chat endpoint."""
     if req.repo_id and req.repo_id != state["repo_id"]:
         if not load_active_repo(req.repo_id):
@@ -334,9 +445,11 @@ def chat_with_repo(req: ChatRequest):
         raise HTTPException(status_code=400, detail="No repository loaded. Call /ingest first.")
 
     context_chunks = retrieve(req.question, state["index"], state["chunks"], k=5)
+    log_retrieval(session, current_user, req.question, context_chunks)
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
 
     answer = generate_answer(context_chunks, req.question, chat_history=history_dicts)
+    save_query(state["repo_id"], current_user.clerk_id if current_user else None, req.question, answer)
     sources = format_source_list(context_chunks)
 
     return {
@@ -347,7 +460,11 @@ def chat_with_repo(req: ChatRequest):
 
 
 @app.post("/chat/stream")
-def chat_with_repo_stream(req: ChatRequest):
+def chat_with_repo_stream(
+    req: ChatRequest,
+    current_user: Optional[User] = Depends(auth.get_current_user_optional),
+    session: Session = Depends(get_session),
+):
     """Server-Sent Events (SSE) streaming chat endpoint."""
     if req.repo_id and req.repo_id != state["repo_id"]:
         if not load_active_repo(req.repo_id):
@@ -357,19 +474,29 @@ def chat_with_repo_stream(req: ChatRequest):
         raise HTTPException(status_code=400, detail="No repository loaded. Call /ingest first.")
 
     context_chunks = retrieve(req.question, state["index"], state["chunks"], k=5)
+    log_retrieval(session, current_user, req.question, context_chunks)
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
     sources = format_source_list(context_chunks)
 
+    repo_id_for_log = state["repo_id"]
+    user_id_for_log = current_user.clerk_id if current_user else None
+
     def event_generator():
-        # First event: send retrieved sources metadata
-        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+        answer_parts: list[str] = []
+        try:
+            # First event: send retrieved sources metadata
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
 
-        # Stream LLM tokens
-        for token in generate_answer_stream(context_chunks, req.question, history_dicts):
-            yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
+            # Stream LLM tokens
+            for token in generate_answer_stream(context_chunks, req.question, history_dicts):
+                answer_parts.append(token)
+                yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
 
-        # Final event: done
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            # Final event: done
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        finally:
+            # Runs on completion or if the client stops generation (saves partial answer)
+            save_query(repo_id_for_log, user_id_for_log, req.question, "".join(answer_parts))
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
