@@ -29,8 +29,6 @@ export default function DocsPage() {
     { id: 'ingestion', title: 'Ingestion & Chunking', icon: Cpu },
     { id: 'retrieval', title: 'Vector Search & Citations', icon: Database },
     { id: 'streaming', title: 'SSE Streaming Chat', icon: Terminal },
-    { id: 'auth', title: 'Clerk Authentication', icon: Shield },
-    { id: 'deployment', title: 'Deployment (Render & Vercel)', icon: Cloud },
     { id: 'api', title: 'API Reference', icon: Code },
   ];
 
@@ -238,80 +236,12 @@ def chunk_file(path: str, content: str) -> list[dict]:
             />
           </section>
 
-          {/* 5. Clerk Auth */}
-          <section id="auth" className="space-y-4">
-            <div className="text-[12px] font-mono uppercase tracking-label text-signal-red">
-              // SECTION 05
-            </div>
-            <h2 className="font-display text-3xl font-black uppercase tracking-tight text-text">
-              Clerk Authentication & User Isolation
-            </h2>
-            <p className="font-mono text-xs text-dim leading-relaxed">
-              DotMind supports Google, GitHub, and email authentication via Clerk. Sessions are verified cryptographically via RS256 JWKS:
-            </p>
-
-            <Panel className="p-5 font-mono text-xs space-y-3">
-              <div className="flex items-center gap-2 text-ready-green font-semibold">
-                <CheckCircle2 size={15} />
-                <span>Zero Password Storage on Server</span>
-              </div>
-              <p className="text-dim">
-                Tokens are validated using Clerk's public JSON Web Key Set (JWKS). The user's Clerk ID is used as the tenant identifier for repository records in the SQLModel database.
-              </p>
-            </Panel>
-          </section>
-
-          {/* 6. Deployment */}
-          <section id="deployment" className="space-y-4">
-            <div className="text-[12px] font-mono uppercase tracking-label text-signal-red">
-              // SECTION 06
-            </div>
-            <h2 className="font-display text-3xl font-black uppercase tracking-tight text-text">
-              Deployment Guide (Render & Vercel)
-            </h2>
-            <p className="font-mono text-xs text-dim leading-relaxed">
-              DotMind is engineered for cloud deployment with zero complex infrastructure:
-            </p>
-
-            <div className="space-y-4">
-              <Panel label="BACKEND // RENDER WEB SERVICE" className="p-5">
-                <p className="font-mono text-xs text-dim mb-3">
-                  Deploy as a Python Web Service on Render using the provided Blueprint <code className="text-text">render.yaml</code>:
-                </p>
-                <CodeBlock
-                  filePath="Render Service Settings"
-                  code={`Runtime: Python
-Build Command: pip install -r backend/requirements.txt
-Start Command: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-Health Check: /health
-Environment Variables:
-  - OPENAI_API_KEY
-  - CLERK_SECRET_KEY
-  - CLERK_PUBLISHABLE_KEY`}
-                />
-              </Panel>
-
-              <Panel label="FRONTEND // VERCEL DEPLOYMENT" className="p-5">
-                <p className="font-mono text-xs text-dim mb-3">
-                  Deploy to Vercel directly from the GitHub repository:
-                </p>
-                <CodeBlock
-                  filePath="Vercel Project Settings"
-                  code={`Root Directory: frontend
-Framework Preset: Next.js
-Environment Variables:
-  - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  - CLERK_SECRET_KEY
-  - NEXT_PUBLIC_API_URL (URL of your Render backend)`}
-                />
-              </Panel>
-            </div>
-          </section>
+         
 
           {/* 7. API Reference */}
           <section id="api" className="space-y-4">
             <div className="text-[12px] font-mono uppercase tracking-label text-signal-red">
-              // SECTION 07
+              // SECTION 05
             </div>
             <h2 className="font-display text-3xl font-black uppercase tracking-tight text-text">
               API Reference
