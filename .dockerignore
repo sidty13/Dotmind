@@ -1,0 +1,12 @@
+.git
+.gitignore
+.venv
+__pycache__
+**/*.pyc
+temp_repos
+storage
+users.db
+frontend/
+.env
+.env.*
+!.env.example
