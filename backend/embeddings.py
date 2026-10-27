@@ -17,7 +17,8 @@ def embed_chunks(
     progress_callback: Optional[Callable[[float], None]] = None
 ) -> np.ndarray:
     """Convert chunk contents into vectors using OpenAI embeddings with progress feedback."""
-    texts = [chunk["content"] for chunk in chunks]
+    # Prefer embed_text (with hierarchical breadcrumbs) if present, fallback to raw content
+    texts = [chunk.get("embed_text") or chunk["content"] for chunk in chunks]
     if not texts:
         return np.empty((0, 1536), dtype="float32")
 

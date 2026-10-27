@@ -22,13 +22,16 @@ _chunks = None
 
 
 def format_context(chunks: list[dict]) -> str:
-    """Formats retrieved code chunks into a readable context string."""
+    """Formats retrieved code chunks into a readable context string with hierarchical file markers."""
     context_parts = []
     for chunk in chunks:
-        lines = ""
-        if "start_line" in chunk and "end_line" in chunk:
-            lines = f" (Lines {chunk['start_line']}-{chunk['end_line']})"
-        context_parts.append(f"--- File: {chunk['path']}{lines} ---\n{chunk['content']}")
+        path = chunk.get("path", "unknown")
+        folder = chunk.get("folder") or os.path.dirname(path) or "root"
+        start_line = chunk.get("start_line", 1)
+        end_line = chunk.get("end_line", 1)
+        lines = f" (Lines {start_line}-{end_line})" if start_line and end_line else ""
+        header = f"--- [File: {path}] [Directory: {folder}]{lines} ---"
+        context_parts.append(f"{header}\n{chunk.get('content', '')}")
     return "\n\n".join(context_parts)
 
 
@@ -39,9 +42,10 @@ def build_messages(context_chunks: list[dict], question: str, chat_history: list
         "You are an expert software developer and code assistant analyzing a GitHub repository.\n"
         "Answer questions accurately based on the provided code context and conversation history.\n"
         "Guidelines:\n"
-        "1. Always reference the relevant files and line numbers when explaining.\n"
-        "2. If the context does not contain enough info, state that clearly.\n"
-        "3. Provide clean code snippets when helpful."
+        "1. Always cite the exact file path and line numbers (e.g. `path/to/file.py#L12-L34`) when referencing code.\n"
+        "2. Clearly identify which folder/module the code resides in when explaining architecture.\n"
+        "3. If the context does not contain enough info, state that clearly.\n"
+        "4. Provide clean code snippets when helpful."
     )
 
     messages = [{"role": "system", "content": system_prompt}]

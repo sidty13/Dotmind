@@ -384,10 +384,15 @@ def format_source_list(context_chunks: list[dict]) -> list[dict]:
     for chunk in context_chunks:
         start_line = chunk.get("start_line")
         end_line = chunk.get("end_line")
-        url = build_github_url(repo_url, branch, chunk["path"], start_line, end_line)
+        path = chunk.get("path", "")
+        folder = chunk.get("folder") or os.path.dirname(path) or "root"
+        file_name = chunk.get("file_name") or os.path.basename(path)
+        url = build_github_url(repo_url, branch, path, start_line, end_line)
 
         sources.append({
-            "path": chunk["path"],
+            "path": path,
+            "folder": folder,
+            "file_name": file_name,
             "url": url,
             "start_line": start_line,
             "end_line": end_line,
@@ -395,6 +400,7 @@ def format_source_list(context_chunks: list[dict]) -> list[dict]:
             "preview": chunk["content"][:200] + ("..." if len(chunk["content"]) > 200 else "")
         })
     return sources
+
 
 
 def log_retrieval(session: Session, user: Optional[User], question: str, chunks: list[dict]):

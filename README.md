@@ -8,13 +8,15 @@ dotmind is an asynchronous RAG (Retrieval-Augmented Generation) assistant that i
 
 ## Features
 
-- **Multi-Repository Isolation**: Index multiple codebases (`pallets/click`, `encode/starlette`, etc.) with dedicated FAISS vector indexes and hot-swap between them in milliseconds.
+- **Hierarchical Code Parsing & Breadcrumbs**: Slices code on clean line boundaries and injects hierarchical breadcrumbs (`[File: folder/path | Directory: folder]`) into vector embeddings for directory-aware semantic search.
+- **Hierarchical Path Boosting & Coordinate Preservation**: Dynamically boosts relevance when queries reference specific folders or file names, while preserving 100% exact `start_line` and `end_line` coordinates.
+- **Multi-Repository Isolation**: Index multiple codebases with dedicated FAISS vector indexes and hot-swap between them in milliseconds.
 - **Asynchronous Ingestion Pipeline**: Background worker clones, parses, chunks, and embeds repositories with live stage and percentage progress tracking.
 - **OpenAI Vectorization**: Powered by OpenAI `text-embedding-3-small` (1536-dimensional embeddings) and `gpt-4o-mini` for fast, cost-effective reasoning.
 - **Server-Sent Events (SSE) Streaming**: Token-by-token real-time streaming endpoint (`POST /chat/stream`).
-- **Exact Line-Number GitHub Links**: Generates direct GitHub permalinks to the exact code lines (e.g. `https://github.com/encode/starlette/blob/main/starlette/routing.py#L45-L68`).
+- **Exact Line-Number GitHub Links**: Generates direct GitHub permalinks to the exact code lines (e.g. `https://github.com/org/repo/blob/main/src/auth/jwt.py#L45-L68`).
 - **Modern Authentication (Clerk)**: Seamless authentication with Google, GitHub, or Email via Clerk, verified using cryptographic RS256 JWKS tokens.
-- **SQLModel ORM & SQLite**: Clean database persistence for users and repository metadata.
+- **SQLModel ORM & Storage**: Clean database persistence for users, repositories, retrieval logs, and chat history.
 
 ---
 
@@ -24,10 +26,11 @@ dotmind is an asynchronous RAG (Retrieval-Augmented Generation) assistant that i
 | :--- | :--- |
 | **API Framework** | FastAPI (ASGI) + Uvicorn |
 | **LLM & Embeddings** | OpenAI `gpt-4o-mini` & `text-embedding-3-small` |
-| **Vector Search** | FAISS (`faiss-cpu`, `IndexFlatIP`) |
+| **Vector Search** | FAISS (`faiss-cpu`, `IndexFlatIP`) with Hierarchical Boosting |
+| **Code Parser** | Line-aware hierarchical chunker with directory metadata |
 | **Git Ingestion** | GitPython |
 | **Authentication** | Clerk (RS256 JWT Verification via PyJWT) |
-| **Database ORM** | SQLModel (SQLAlchemy + Pydantic) with SQLite |
+| **Database ORM** | SQLModel (SQLAlchemy + Pydantic) |
 | **Package Manager** | `uv` (Fast Python Package Manager) |
 
 ---
@@ -38,25 +41,24 @@ dotmind is an asynchronous RAG (Retrieval-Augmented Generation) assistant that i
 dotmind/
 ├── backend/
 │   ├── auth.py              # Clerk authentication & token verification
-│   ├── chunker.py           # Sliding-window code chunker with line tracking
-│   ├── database.py          # SQLModel SQLite database engine & session
-│   ├── embeddings.py        # OpenAI embedding generation & FAISS indexer
+│   ├── chunker.py           # Line-aware hierarchical code chunker with directory metadata
+│   ├── database.py          # SQLModel database engine & session
+│   ├── embeddings.py        # OpenAI embedding generation with hierarchical context
 │   ├── ingest_manager.py    # Async ingestion job tracker & multi-repo storage
 │   ├── main.py              # FastAPI application gateway & API routes
 │   ├── models.py            # SQLModel database tables & Pydantic schemas
 │   ├── rag_pipeline.py      # Prompt construction & token streaming generator
 │   ├── repo_loader.py       # Git cloning & code file parsing
-│   ├── retrieval.py         # Cosine similarity vector retrieval
+│   ├── retrieval.py         # Hierarchical path-boosted vector retrieval
 │   └── tests/               # Standalone test & verification scripts
-│       ├── test_embeddings.py
-│       ├── test_loader.py
-│       └── test_rag.py
+├── frontend/                # Next.js 14 App Router (TypeScript + Tailwind CSS)
 ├── storage/                 # Per-repo FAISS indexes & chunk caches (gitignored)
 ├── main.py                  # Root application launcher
 ├── pyproject.toml           # Project dependencies & metadata
 ├── .env.example             # Environment variable template
 └── README.md
 ```
+
 
 ---
 
