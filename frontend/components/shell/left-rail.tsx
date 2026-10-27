@@ -51,7 +51,8 @@ export const LeftRail: React.FC = () => {
               width={28}
               height={28}
               priority
-              className="h-7 w-7 object-contain shrink-0"
+              unoptimized
+              className="h-7 w-7 object-contain shrink-0 drop-shadow-[0_0_6px_rgba(215,25,33,0.6)]"
             />
             {isExpanded && (
               <span className="font-display text-lg font-bold text-text truncate">

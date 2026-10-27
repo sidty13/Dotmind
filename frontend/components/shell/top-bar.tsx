@@ -76,22 +76,23 @@ export const TopBar: React.FC<TopBarProps> = ({
     <header className="h-14 border-b border-border bg-panel px-4 sm:px-6 flex items-center justify-between select-none shrink-0 z-30">
       {/* Left: Wordmark & Repo selector dropdown */}
       <div className="flex items-center gap-4">
-      <Link href="/overview" className="hidden sm:flex items-center gap-2">
-  <Image
-    src="/DOTMIND.png"
-    alt="DotMind"
-    width={28}
-    height={28}
-    priority
-    className="h-7 w-7 object-contain"
-  />
-  <span className="font-display text-xl font-bold tracking-tight text-text">
-    DotMind
-  </span>
-  <span className="text-[10px] font-mono text-signal-red border border-signal-red/40 px-1 py-0.2 rounded-[2px]">
-    PROD
-  </span>
-</Link>
+      <Link href="/overview" className="flex items-center gap-2">
+        <Image
+          src="/DOTMIND.png"
+          alt="DotMind"
+          width={28}
+          height={28}
+          priority
+          unoptimized
+          className="h-7 w-7 object-contain drop-shadow-[0_0_6px_rgba(215,25,33,0.6)]"
+        />
+        <span className="font-display text-xl font-bold tracking-tight text-text">
+          DotMind
+        </span>
+        <span className="text-[10px] font-mono text-signal-red border border-signal-red/40 px-1 py-0.2 rounded-[2px]">
+          PROD
+        </span>
+      </Link>
 
         <span className="hidden sm:inline text-dim/40 font-mono">/</span>
 

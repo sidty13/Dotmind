@@ -7,20 +7,20 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen dotted-grid flex flex-col items-center justify-center p-4 bg-bg text-text">
       {/* Wordmark Header */}
-     <Link href="/overview" className="hidden sm:flex items-center gap-2">
-  <Image
-    src="/DOTMIND.png"
-    alt="DotMind"
-    width={28}
-    height={28}
-    priority
-    className="h-7 w-7 object-contain"
-  />
-  <span className="font-display text-xl font-bold tracking-tight text-text">
-    DotMind
-  </span>
- 
-</Link>
+      <Link href="/overview" className="flex items-center gap-2 mb-6">
+        <Image
+          src="/DOTMIND.png"
+          alt="DotMind"
+          width={28}
+          height={28}
+          priority
+          unoptimized
+          className="h-7 w-7 object-contain drop-shadow-[0_0_6px_rgba(215,25,33,0.6)]"
+        />
+        <span className="font-display text-xl font-bold tracking-tight text-text">
+          DotMind
+        </span>
+      </Link>
 
       {/* Clerk Sign Up Component */}
       <div className="w-full max-w-md flex justify-center">

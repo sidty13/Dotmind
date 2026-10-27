@@ -19,7 +19,8 @@ export const LandingNav: React.FC = () => {
             width={40}
             height={40}
             priority
-            className="h-10 w-10 object-contain group-hover:scale-105 transition-transform"
+            unoptimized
+            className="h-10 w-10 object-contain drop-shadow-[0_0_8px_rgba(215,25,33,0.6)] group-hover:scale-105 transition-transform"
           />
           <span className="font-display text-2xl font-black tracking-wider text-text">
             DotMind
