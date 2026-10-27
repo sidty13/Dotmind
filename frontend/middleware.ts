@@ -8,7 +8,6 @@ const isPublicRoute = createRouteMatcher([
   '/api/(.*)',
   '/DOTMIND.png',
   '/dotmind.png',
-  '/(.*)\\.(?:png|PNG|jpg|jpeg|svg|ico|webp|gif)',
 ]);
 
 export default clerkMiddleware((auth, request) => {
