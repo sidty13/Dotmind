@@ -28,6 +28,16 @@
   --color-dim: #666666;
 }
 
+/* Clean Standard Sans-Serif Font Mode (toggled by user) */
+html.clean-font,
+html.clean-font body,
+html.clean-font [class*="font-mono"],
+html.clean-font [class*="font-display"] {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  letter-spacing: normal !important;
+}
+
+
 body {
   background-color: var(--color-bg);
   color: var(--color-text);

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Kbd } from '@/components/ui/kbd';
 import { Repository } from '@/lib/types';
-import { ChevronDown, Moon, Sun, Search } from 'lucide-react';
+import { ChevronDown, Moon, Sun, Search, Type } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 import Image from 'next/image';
 
@@ -24,7 +24,17 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+  const [isCleanFont, setIsCleanFont] = useState(false);
   const [shortcutLabel, setShortcutLabel] = useState('Ctrl+K');
+
+  // Load font preference from localStorage on mount
+  useEffect(() => {
+    const savedFont = localStorage.getItem('dotmind-font-mode');
+    if (savedFont === 'clean') {
+      setIsCleanFont(true);
+      document.documentElement.classList.add('clean-font');
+    }
+  }, []);
 
   // Pick the label for the user's OS after mount (avoids a hydration mismatch)
   useEffect(() => {
@@ -48,6 +58,19 @@ export const TopBar: React.FC<TopBarProps> = ({
     setIsLightMode(!isLightMode);
     document.documentElement.classList.toggle('light');
   };
+
+  const toggleFont = () => {
+    const nextState = !isCleanFont;
+    setIsCleanFont(nextState);
+    if (nextState) {
+      document.documentElement.classList.add('clean-font');
+      localStorage.setItem('dotmind-font-mode', 'clean');
+    } else {
+      document.documentElement.classList.remove('clean-font');
+      localStorage.setItem('dotmind-font-mode', 'mono');
+    }
+  };
+
 
   return (
     <header className="h-14 border-b border-border bg-panel px-4 sm:px-6 flex items-center justify-between select-none shrink-0 z-30">
@@ -146,6 +169,18 @@ export const TopBar: React.FC<TopBarProps> = ({
           <Search size={13} />
           <span className="hidden md:inline">Command Palette</span>
           <Kbd>{shortcutLabel}</Kbd>
+        </button>
+
+        {/* Font Toggle */}
+        <button
+          onClick={toggleFont}
+          className={`w-8 h-8 rounded-[4px] border border-border bg-raised hover:border-dim flex items-center justify-center transition-colors ${
+            isCleanFont ? 'text-signal-red border-signal-red/40' : 'text-dim hover:text-text'
+          }`}
+          title={isCleanFont ? 'Switch to Mono / Dot-matrix font' : 'Switch to Clean Sans-serif font'}
+          aria-label="Toggle font mode"
+        >
+          <Type size={14} />
         </button>
 
         {/* Theme Toggle */}

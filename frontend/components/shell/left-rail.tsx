@@ -12,7 +12,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  BookOpen,
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -22,7 +21,6 @@ const NAV_ITEMS = [
   { href: '/repos', label: 'Repos', icon: FolderGit2 },
   { href: '/chat', label: 'Chat', icon: Terminal },
   { href: '/sources', label: 'Sources', icon: Code2 },
- 
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -45,23 +43,26 @@ export const LeftRail: React.FC = () => {
     >
       {/* Top Section / Brand Icon */}
       <div>
-        <div className="h-14 flex items-center justify-between px-5 border-b border-border">
-             <Link href="/overview" className="hidden sm:flex items-center gap-2">
-           <Image
-             src="/DOTMIND.png"
-             alt="DotMind"
-             width={28}
-             height={28}
-             priority
-             className="h-7 w-7 object-contain"
-           />
-          
-           
-         </Link>
+        <div className="h-14 flex items-center justify-between px-4 sm:px-5 border-b border-border">
+          <Link href="/overview" className="flex items-center gap-2.5 overflow-hidden">
+            <Image
+              src="/DOTMIND.png"
+              alt="DotMind"
+              width={28}
+              height={28}
+              priority
+              className="h-7 w-7 object-contain shrink-0"
+            />
+            {isExpanded && (
+              <span className="font-display text-lg font-bold text-text truncate">
+                DotMind
+              </span>
+            )}
+          </Link>
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-dim hover:text-text transition-colors p-1 rounded-[3px] border border-border"
+            className="text-dim hover:text-text transition-colors p-1 rounded-[3px] border border-border shrink-0"
             title={isExpanded ? 'Collapse rail' : 'Expand rail'}
           >
             {isExpanded ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
@@ -77,7 +78,7 @@ export const LeftRail: React.FC = () => {
             } w-[2px] border-l-2 border-dotted border-border/70 z-0 transition-all duration-300`}
           />
 
-          <nav className="flex flex-col gap-6 relative z-10">
+          <nav className="flex flex-col gap-3 relative z-10">
             {NAV_ITEMS.map((item, idx) => {
               const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
               const isVisited = visitedRoutes.includes(item.href);
@@ -88,35 +89,53 @@ export const LeftRail: React.FC = () => {
                   key={idx}
                   href={item.href}
                   onClick={() => handleNodeClick(item.href)}
-                  className={`group flex items-center gap-3.5 py-1 px-2 rounded-[4px] transition-colors ${
-                    isActive ? 'text-text font-semibold' : 'text-dim hover:text-text'
+                  className={`group relative flex items-center rounded-[6px] transition-all duration-200 ${
+                    isExpanded ? 'gap-3.5 px-3 py-2' : 'justify-center p-2.5 mx-auto'
+                  } ${
+                    isActive
+                      ? 'bg-raised text-signal-red font-semibold border border-signal-red/30 shadow-[0_0_12px_rgba(215,25,33,0.15)]'
+                      : 'text-dim hover:text-text hover:bg-raised/60 border border-transparent'
                   }`}
+                  title={!isExpanded ? item.label : undefined}
                 >
-                  {/* Metro Node Circle */}
-                  <div className="relative flex items-center justify-center w-6 h-6 shrink-0">
-                    <span
-                      className={`w-3.5 h-3.5 rounded-full transition-all duration-200 border ${
+                  {/* Icon & Active Indicator */}
+                  <div className="relative flex items-center justify-center">
+                    <Icon
+                      size={18}
+                      className={`transition-colors shrink-0 ${
                         isActive
-                          ? 'bg-signal-red border-signal-red shadow-[0_0_8px_rgba(215,25,33,0.9)] animate-pulse-red'
-                          : isVisited
-                          ? 'bg-text border-text'
-                          : 'bg-panel border-dim/50 group-hover:border-text'
+                          ? 'text-signal-red'
+                          : 'text-dim group-hover:text-text'
                       }`}
                     />
+                    {/* Active badge dot on collapsed icon */}
+                    {!isExpanded && isActive && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-signal-red shadow-[0_0_6px_rgba(215,25,33,0.9)]" />
+                    )}
                   </div>
 
-                  {/* Icon & Label */}
-                  {isExpanded ? (
-                    <div className="flex items-center gap-2 truncate">
-                      <Icon size={14} className={isActive ? 'text-signal-red' : 'text-dim'} />
-                      <span className="font-mono text-[13px] uppercase tracking-label truncate">
+                  {/* Expanded Label */}
+                  {isExpanded && (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span
+                        className={`text-[13px] font-mono tracking-label uppercase truncate ${
+                          isActive ? 'text-text font-bold' : 'text-dim group-hover:text-text'
+                        }`}
+                      >
                         {item.label}
                       </span>
+                      {isActive && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-signal-red shadow-[0_0_6px_rgba(215,25,33,0.8)]" />
+                      )}
                     </div>
-                  ) : (
-                    /* Floating Tooltip when collapsed */
-                    <div className="absolute left-[74px] hidden group-hover:flex items-center px-2.5 py-1 rounded-[3px] bg-raised border border-border text-[12px] font-mono uppercase tracking-label text-text shadow-lg z-50 whitespace-nowrap">
-                      {item.label}
+                  )}
+
+                  {/* Floating Tooltip when collapsed */}
+                  {!isExpanded && (
+                    <div className="absolute left-[62px] hidden group-hover:flex items-center gap-2 px-3 py-1.5 rounded-[4px] bg-raised border border-border text-[12px] font-mono uppercase tracking-label text-text shadow-xl z-50 whitespace-nowrap pointer-events-none">
+                      <Icon size={13} className={isActive ? 'text-signal-red' : 'text-dim'} />
+                      <span>{item.label}</span>
+                      {isActive && <span className="text-[10px] text-signal-red font-bold">● ACTIVE</span>}
                     </div>
                   )}
                 </Link>
@@ -127,7 +146,7 @@ export const LeftRail: React.FC = () => {
       </div>
 
       {/* Bottom Rail Metadata */}
-      
     </aside>
   );
 };
+

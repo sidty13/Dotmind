@@ -49,6 +49,19 @@ export default function RootLayout({
       }}
     >
       <html lang="en" className="dark">
+        <head>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                try {
+                  if (localStorage.getItem('dotmind-font-mode') === 'clean') {
+                    document.documentElement.classList.add('clean-font');
+                  }
+                } catch (e) {}
+              `,
+            }}
+          />
+        </head>
         <body className="antialiased font-ui bg-bg text-text">
           {children}
         </body>

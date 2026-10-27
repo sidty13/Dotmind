@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import {
   Sun,
   Moon,
+  Type,
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -16,10 +17,32 @@ export default function SettingsPage() {
   // Appearance state
   const [isLightMode, setIsLightMode] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [isCleanFont, setIsCleanFont] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedFont = localStorage.getItem('dotmind-font-mode');
+      if (savedFont === 'clean') {
+        setIsCleanFont(true);
+      }
+    }
+  }, []);
 
   const toggleTheme = () => {
     setIsLightMode(!isLightMode);
     document.documentElement.classList.toggle('light');
+  };
+
+  const toggleFont = () => {
+    const nextState = !isCleanFont;
+    setIsCleanFont(nextState);
+    if (nextState) {
+      document.documentElement.classList.add('clean-font');
+      localStorage.setItem('dotmind-font-mode', 'clean');
+    } else {
+      document.documentElement.classList.remove('clean-font');
+      localStorage.setItem('dotmind-font-mode', 'mono');
+    }
   };
 
   return (
@@ -117,6 +140,22 @@ export default function SettingsPage() {
             <Button variant="secondary" size="sm" onClick={toggleTheme} className="gap-2">
               {isLightMode ? <Moon size={13} /> : <Sun size={13} />}
               <span>{isLightMode ? 'Switch to Dark' : 'Switch to Light'}</span>
+            </Button>
+          </div>
+
+          {/* Typography Mode Toggle */}
+          <div className="flex items-center justify-between py-2 border-b border-border">
+            <div>
+              <span className="text-text font-bold block">TYPOGRAPHY MODE:</span>
+              <span className="text-dim text-[12px]">
+                {isCleanFont
+                  ? 'Clean Sans-Serif (Inter font family)'
+                  : 'Dot-matrix & Monospace (JetBrains Mono & Doto)'}
+              </span>
+            </div>
+            <Button variant="secondary" size="sm" onClick={toggleFont} className="gap-2">
+              <Type size={13} />
+              <span>{isCleanFont ? 'Switch to Monospace' : 'Switch to Sans-Serif'}</span>
             </Button>
           </div>
 
