@@ -8,11 +8,15 @@ raw_db_url = os.environ.get(
     f"sqlite:///{os.path.join(BASE_DIR, 'users.db')}",
 ).strip()
 
-# SQLAlchemy 1.4+ requires postgresql:// instead of postgres://
+# SQLAlchemy 2.0 defaults to psycopg v3 if not explicitly specified.
+# Normalizing to postgresql+psycopg2:// ensures seamless compatibility with psycopg2-binary
 if raw_db_url.startswith("postgres://"):
-    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+elif raw_db_url.startswith("postgresql://"):
+    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 else:
     DATABASE_URL = raw_db_url
+
 
 # Configure engine based on database dialect
 if DATABASE_URL.startswith("sqlite"):
