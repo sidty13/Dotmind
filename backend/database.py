@@ -42,8 +42,25 @@ print(f"Database connected: {sanitized_url}")
 
 
 def create_db_and_tables():
-    """Create all SQLModel tables automatically on startup."""
-    SQLModel.metadata.create_all(engine)
+    """Create all SQLModel tables automatically on startup.
+    Falls back to local SQLite if remote PostgreSQL is unreachable."""
+    global engine
+    try:
+        SQLModel.metadata.create_all(engine)
+    except Exception as e:
+        print(f"Warning: Database connection to {sanitized_url} failed: {e}")
+        if not DATABASE_URL.startswith("sqlite"):
+            print("Falling back to local SQLite database (users.db)...")
+            fallback_url = f"sqlite:///{os.path.join(BASE_DIR, 'users.db')}"
+            engine = create_engine(
+                fallback_url,
+                echo=False,
+                connect_args={"check_same_thread": False},
+            )
+            SQLModel.metadata.create_all(engine)
+            print("Local SQLite database initialized successfully.")
+        else:
+            raise
 
 
 def get_session():
